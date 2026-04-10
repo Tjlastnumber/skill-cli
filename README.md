@@ -65,12 +65,12 @@ skill doctor --tool opencode --repair-registry
 
 | Command | Description |
 | --- | --- |
-| `skill install <source> --tool <tool|all> (--global|--project|--dir <path>)` | Install bundle from git/npm/local source |
-| `skill list [--tool <tool|all>] [--dir <path>] [--status all|managed|discovered] [--expand]` | List bundles and optionally scan a custom directory |
-| `skill remove <bundle-name> --tool <tool|all> (--global|--project|--dir <path>)` | Remove an installed bundle |
-| `skill register [--tool <tool|all>] [--dir <path>]` | Backfill registry from discovered installs, including custom directories |
-| `skill doctor [--tool <tool|all>] [--dir <path>] [--repair-registry]` | Validate install state, report broken links, and optionally repair registry |
-| `skill relink [--tool <tool|all>]` | Recreate missing or broken symlinks |
+| `skill install <source> --tool <tool-or-all> (one target: --global / --project / --dir <path>)` | Install bundle from git/npm/local source |
+| `skill list [--tool <tool-or-all>] [--status <all,managed,discovered>] [--expand]` | List bundles and optionally expand member skills |
+| `skill remove <bundle-name> --tool <tool-or-all> (one target: --global / --project / --dir <path>)` | Remove an installed bundle |
+| `skill register [--tool <tool-or-all>]` | Backfill registry from discovered installs |
+| `skill doctor [--tool <tool-or-all>] [--repair-registry]` | Validate install state and optionally repair registry |
+| `skill relink [--tool <tool-or-all>]` | Recreate missing or broken symlinks |
 | `skill prune` | Remove unreferenced store entries |
 
 ## How it works

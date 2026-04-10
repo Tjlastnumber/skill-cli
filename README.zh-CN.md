@@ -65,12 +65,12 @@ skill doctor --tool opencode --repair-registry
 
 | 命令 | 说明 |
 | --- | --- |
-| `skill install <source> --tool <tool|all> (--global\|--project\|--dir <path>)` | 从 git/npm/本地源安装 bundle |
-| `skill list [--tool <tool|all>] [--dir <path>] [--status all\|managed\|discovered] [--expand]` | 查看 bundle 列表，并可额外扫描自定义目录 |
-| `skill remove <bundle-name> --tool <tool|all> (--global\|--project\|--dir <path>)` | 删除已安装 bundle |
-| `skill register [--tool <tool|all>] [--dir <path>]` | 扫描并回填注册表，也可包含自定义目录 |
-| `skill doctor [--tool <tool|all>] [--dir <path>] [--repair-registry]` | 检查状态、报告断链，并可选修复注册表 |
-| `skill relink [--tool <tool|all>]` | 重建缺失或损坏的软链接 |
+| `skill install <source> --tool <tool-or-all>（三选一目标：--global / --project / --dir <path>）` | 从 git/npm/本地源安装 bundle |
+| `skill list [--tool <tool-or-all>] [--status <all,managed,discovered>] [--expand]` | 查看 bundle 列表，并可展开成员 skill |
+| `skill remove <bundle-name> --tool <tool-or-all>（三选一目标：--global / --project / --dir <path>）` | 删除已安装 bundle |
+| `skill register [--tool <tool-or-all>]` | 扫描并回填注册表 |
+| `skill doctor [--tool <tool-or-all>] [--repair-registry]` | 检查状态，并可选修复注册表 |
+| `skill relink [--tool <tool-or-all>]` | 重建缺失或损坏的软链接 |
 | `skill prune` | 清理未引用的 store 缓存 |
 
 ## 工作原理
