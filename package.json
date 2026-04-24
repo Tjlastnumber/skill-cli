@@ -3,6 +3,10 @@
   "version": "0.2.0",
   "description": "Local skill manager CLI for coding tools",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Tjlastnumber/skill-cli.git"
+  },
   "type": "module",
   "packageManager": "pnpm@10.29.3",
   "engines": {
