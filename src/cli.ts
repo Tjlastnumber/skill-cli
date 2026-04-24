@@ -3,6 +3,7 @@
 import { Command, CommanderError } from "commander";
 import { pathToFileURL } from "node:url";
 
+import { runBrowseCommand } from "./commands/browse.js";
 import { runDoctorCommand } from "./commands/doctor.js";
 import { runInstallCommand } from "./commands/install.js";
 import { runListCommand } from "./commands/list.js";
@@ -50,6 +51,14 @@ export async function runCli(argv: string[] = process.argv): Promise<void> {
     .description("Install and manage local skills across coding tools")
     .version("0.1.1")
     .exitOverride();
+
+  program
+    .command("browse")
+    .argument("<github-repo-url>", "Public GitHub repository root URL")
+    .option("--filter <text>", "Filter skills by name, description, or path")
+    .action(async (repositoryUrl: string, options: { filter?: string }) => {
+      await runBrowseCommand({ repositoryUrl, filter: options.filter });
+    });
 
   program
     .command("install")

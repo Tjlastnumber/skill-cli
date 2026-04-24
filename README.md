@@ -19,6 +19,7 @@ Different coding CLIs use different skill directories. Managing the same skill s
 ## Features
 
 - Install skills from `git`, `npm`, or local paths
+- Browse repository-root and nested skills from public GitHub repositories without cloning
 - Manage skills for `claude-code`, `codex`, and `opencode`
 - Install targets: `--global`, `--project`, and `--dir <path>`
 - Bundle-level registry with member tracking
@@ -54,6 +55,18 @@ skill list --tool opencode
 skill list --tool opencode --expand
 ```
 
+Browse a public GitHub repository on its default branch, including a repository-root `SKILL.md` and nested skill files:
+
+```bash
+skill browse https://github.com/owner/repo
+```
+
+Filter browse results with a case-insensitive substring match against skill name, description, or path:
+
+```bash
+skill browse https://github.com/owner/repo --filter browser
+```
+
 Repair registry from already installed links:
 
 ```bash
@@ -65,6 +78,7 @@ skill doctor --tool opencode --repair-registry
 
 | Command | Description |
 | --- | --- |
+| `skill browse <github-repo-url> [--filter <text>]` | Browse a public GitHub repository default branch for a repository-root `SKILL.md` and nested skill files without cloning; `--filter` does a case-insensitive substring match against skill name, description, and path |
 | `skill install <source> --tool <tool-or-all> (one target: --global / --project / --dir <path>)` | Install bundle from git/npm/local source |
 | `skill list [--tool <tool-or-all>] [--status <all,managed,discovered>] [--expand]` | List bundles and optionally expand member skills |
 | `skill remove <bundle-name> --tool <tool-or-all> (one target: --global / --project / --dir <path>)` | Remove an installed bundle |

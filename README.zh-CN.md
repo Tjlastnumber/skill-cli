@@ -19,6 +19,7 @@
 ## 功能特性
 
 - 支持从 `git`、`npm`、本地路径安装 skills
+- 支持直接浏览公开 GitHub 仓库中的根目录与嵌套 skills，无需克隆
 - 支持 `claude-code`、`codex`、`opencode`
 - 支持安装目标：`--global`、`--project`、`--dir <path>`
 - bundle 级注册表（包含成员 skill）
@@ -54,6 +55,18 @@ skill list --tool opencode
 skill list --tool opencode --expand
 ```
 
+浏览公开 GitHub 仓库默认分支中的 skills，包括仓库根目录 `SKILL.md` 和嵌套 skill 文件：
+
+```bash
+skill browse https://github.com/owner/repo
+```
+
+按 skill 名称、描述或路径进行不区分大小写的子串匹配筛选：
+
+```bash
+skill browse https://github.com/owner/repo --filter browser
+```
+
 把“已安装但未登记”的内容写入注册表：
 
 ```bash
@@ -65,6 +78,7 @@ skill doctor --tool opencode --repair-registry
 
 | 命令 | 说明 |
 | --- | --- |
+| `skill browse <github-repo-url> [--filter <text>]` | 浏览公开 GitHub 仓库默认分支中的仓库根目录 `SKILL.md` 与嵌套 skill 文件，无需克隆；`--filter` 对 skill 名称、描述和路径进行不区分大小写的子串匹配 |
 | `skill install <source> --tool <tool-or-all>（三选一目标：--global / --project / --dir <path>）` | 从 git/npm/本地源安装 bundle |
 | `skill list [--tool <tool-or-all>] [--status <all,managed,discovered>] [--expand]` | 查看 bundle 列表，并可展开成员 skill |
 | `skill remove <bundle-name> --tool <tool-or-all>（三选一目标：--global / --project / --dir <path>）` | 删除已安装 bundle |
