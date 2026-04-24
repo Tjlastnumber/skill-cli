@@ -1,12 +1,12 @@
 import { browseRepositorySkills, type BrowseRepositorySkillsResult } from "../core/github/browse-repository-skills.js";
 import { createOutput, type Output } from "../core/output.js";
 
-export interface BrowseCommandArgs {
+export interface SearchCommandArgs {
   repositoryUrl: string;
   filter?: string;
 }
 
-export interface BrowseRuntimeOptions {
+export interface SearchRuntimeOptions {
   output?: Output;
   browser?: (repositoryUrl: string) => Promise<BrowseRepositorySkillsResult>;
 }
@@ -18,9 +18,9 @@ function matchesFilter(skill: BrowseRepositorySkillsResult["skills"][number], fi
   );
 }
 
-export async function runBrowseCommand(
-  args: BrowseCommandArgs,
-  runtime: BrowseRuntimeOptions = {},
+export async function runSearchCommand(
+  args: SearchCommandArgs,
+  runtime: SearchRuntimeOptions = {},
 ): Promise<BrowseRepositorySkillsResult> {
   const output = runtime.output ?? createOutput();
   const browser = runtime.browser ?? ((repositoryUrl: string) => browseRepositorySkills(repositoryUrl));

@@ -3,7 +3,6 @@
 import { Command, CommanderError } from "commander";
 import { pathToFileURL } from "node:url";
 
-import { runBrowseCommand } from "./commands/browse.js";
 import { runDoctorCommand } from "./commands/doctor.js";
 import { runInstallCommand } from "./commands/install.js";
 import { runListCommand } from "./commands/list.js";
@@ -11,6 +10,7 @@ import { runPruneCommand } from "./commands/prune.js";
 import { runRegisterCommand } from "./commands/register.js";
 import { runRelinkCommand } from "./commands/relink.js";
 import { runRemoveCommand } from "./commands/remove.js";
+import { runSearchCommand } from "./commands/search.js";
 import type { InstallTarget } from "./commands/types.js";
 import { ExitCode, SkillCliError } from "./core/errors.js";
 import { createOutput } from "./core/output.js";
@@ -53,11 +53,11 @@ export async function runCli(argv: string[] = process.argv): Promise<void> {
     .exitOverride();
 
   program
-    .command("browse")
+    .command("search")
     .argument("<github-repo-url>", "Public GitHub repository root URL")
     .option("--filter <text>", "Filter skills by name, description, or path")
     .action(async (repositoryUrl: string, options: { filter?: string }) => {
-      await runBrowseCommand({ repositoryUrl, filter: options.filter });
+      await runSearchCommand({ repositoryUrl, filter: options.filter });
     });
 
   program

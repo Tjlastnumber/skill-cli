@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import * as browseCommandModule from "../src/commands/browse.js";
+import * as searchCommandModule from "../src/commands/search.js";
 import { runCli } from "../src/cli.js";
-import { runBrowseCommand } from "../src/commands/browse.js";
+import { runSearchCommand } from "../src/commands/search.js";
 
 function captureOutput() {
   const logs: string[] = [];
@@ -21,11 +21,11 @@ afterEach(() => {
   process.exitCode = undefined;
 });
 
-describe("runBrowseCommand", () => {
+describe("runSearchCommand", () => {
   it("prints the approved repository header and indented skill blocks", async () => {
     const capture = captureOutput();
 
-    await runBrowseCommand(
+    await runSearchCommand(
       { repositoryUrl: "https://github.com/acme/skills" },
       {
         output: capture.output,
@@ -70,7 +70,7 @@ describe("runBrowseCommand", () => {
   it("applies a case-insensitive substring filter over name, description, and path", async () => {
     const capture = captureOutput();
 
-    await runBrowseCommand(
+    await runSearchCommand(
       {
         repositoryUrl: "https://github.com/acme/skills",
         filter: "BETA",
@@ -108,7 +108,7 @@ describe("runBrowseCommand", () => {
   it("prints a no-skills message when the repository contains no skills", async () => {
     const capture = captureOutput();
 
-    await runBrowseCommand(
+    await runSearchCommand(
       { repositoryUrl: "https://github.com/acme/skills" },
       {
         output: capture.output,
@@ -136,7 +136,7 @@ describe("runBrowseCommand", () => {
   it("prints a no-match message when the filter excludes all skills", async () => {
     const capture = captureOutput();
 
-    await runBrowseCommand(
+    await runSearchCommand(
       {
         repositoryUrl: "https://github.com/acme/skills",
         filter: "delta",
@@ -171,10 +171,10 @@ describe("runBrowseCommand", () => {
   });
 });
 
-describe("runCli browse", () => {
-  it("registers the browse command and passes the filter option through", async () => {
-    const runBrowseCommandSpy = vi
-      .spyOn(browseCommandModule, "runBrowseCommand")
+describe("runCli search", () => {
+  it("registers the search command and passes the filter option through", async () => {
+    const runSearchCommandSpy = vi
+      .spyOn(searchCommandModule, "runSearchCommand")
       .mockResolvedValue({
         repository: {
           displayName: "acme/skills",
@@ -185,12 +185,33 @@ describe("runCli browse", () => {
         skills: [],
       });
 
-    await runCli(["node", "skill", "browse", "https://github.com/acme/skills", "--filter", "beta"]);
+    await runCli(["node", "skill", "search", "https://github.com/acme/skills", "--filter", "beta"]);
 
-    expect(runBrowseCommandSpy).toHaveBeenCalledTimes(1);
-    expect(runBrowseCommandSpy).toHaveBeenCalledWith({
+    expect(runSearchCommandSpy).toHaveBeenCalledTimes(1);
+    expect(runSearchCommandSpy).toHaveBeenCalledWith({
       repositoryUrl: "https://github.com/acme/skills",
       filter: "beta",
     });
+  });
+
+  it("does not register the old browse command", async () => {
+    const stderrWriteSpy = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    const runSearchCommandSpy = vi
+      .spyOn(searchCommandModule, "runSearchCommand")
+      .mockResolvedValue({
+        repository: {
+          displayName: "acme/skills",
+          webUrl: "https://github.com/acme/skills",
+          summary: "A public collection of coding skills",
+          defaultBranch: "main",
+        },
+        skills: [],
+      });
+
+    await runCli(["node", "skill", "browse", "https://github.com/acme/skills"]);
+
+    expect(runSearchCommandSpy).not.toHaveBeenCalled();
+    expect(stderrWriteSpy).toHaveBeenCalledWith("error: unknown command 'browse'\n");
+    expect(process.exitCode).toBe(1);
   });
 });

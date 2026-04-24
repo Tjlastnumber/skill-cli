@@ -9,6 +9,10 @@
 
 ### 新增
 
+### 变更
+
+- 将公开 GitHub 仓库 skills 命令从 `skill browse` 重命名为 `skill search`。
+
 ## [0.2.0] - 2026-04-24
 
 ### 新增
