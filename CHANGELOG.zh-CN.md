@@ -9,6 +9,18 @@
 
 ### 新增
 
+## [0.2.0] - 2026-04-24
+
+### 新增
+
+- 新增 `skill browse <github-repo-url> [--filter <text>]`，可直接浏览公开 GitHub 仓库中的 skills，无需克隆。
+- 新增基于 GitHub API 的远程 skill 发现能力，支持默认分支中的仓库根目录 `SKILL.md` 与嵌套 skill 文件。
+- 新增从 `SKILL.md` frontmatter 或正文首段提取描述的浏览结果展示能力。
+
+### 修复
+
+- 当 GitHub 递归树 API 返回截断结果时，显式报错而不是返回不完整的 skill 列表。
+
 ## [0.1.1] - 2026-04-10
 
 ### 新增

@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+## [0.2.0] - 2026-04-24
+
+### Added
+
+- Add `skill browse <github-repo-url> [--filter <text>]` for browsing public GitHub repository skills without cloning.
+- Add remote GitHub skill discovery for repository-root and nested `SKILL.md` files on the default branch.
+- Add description extraction from `SKILL.md` frontmatter or the first body paragraph for browse results.
+
+### Fixed
+
+- Fail explicitly when the GitHub recursive tree API returns a truncated response instead of returning partial skill lists.
+
 ## [0.1.1] - 2026-04-10
 
 ### Added

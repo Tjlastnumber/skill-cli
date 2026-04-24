@@ -1,6 +1,6 @@
 {
   "name": "@tjlastnumber/skill-cli",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Local skill manager CLI for coding tools",
   "license": "MIT",
   "type": "module",
