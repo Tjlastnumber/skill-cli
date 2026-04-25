@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 
 import { runDoctorCommand } from "./commands/doctor.js";
 import { runInstallCommand } from "./commands/install.js";
+import { parseExplicitInstallTargetFlags, resolveInstallInputs } from "./commands/install-inputs.js";
 import { runListCommand } from "./commands/list.js";
 import { runPruneCommand } from "./commands/prune.js";
 import { runRegisterCommand } from "./commands/register.js";
@@ -12,6 +13,7 @@ import { runRelinkCommand } from "./commands/relink.js";
 import { runRemoveCommand } from "./commands/remove.js";
 import { runSearchCommand } from "./commands/search.js";
 import type { InstallTarget } from "./commands/types.js";
+import { loadConfig } from "./core/config/load.js";
 import { ExitCode, SkillCliError } from "./core/errors.js";
 import { createOutput } from "./core/output.js";
 
@@ -63,17 +65,31 @@ export async function runCli(argv: string[] = process.argv): Promise<void> {
   program
     .command("install")
     .argument("<source>", "Source path, git URL, or package name")
-    .requiredOption("--tool <tool>", "Target tool id or 'all'")
+    .option("--tool <tool>", "Target tool id or 'all'")
     .option("--global", "Install into tool global directory")
     .option("--project", "Install into tool project directory")
     .option("--dir <path>", "Install into custom directory")
     .option("--force", "Replace existing target entries")
-    .action(async (source: string, options: TargetOptions & { tool: string; force?: boolean }) => {
+    .action(async (source: string, options: TargetOptions & { tool?: string; force?: boolean }) => {
+      const config = await loadConfig();
+      const resolved = await resolveInstallInputs({
+        tool: options.tool,
+        target: parseExplicitInstallTargetFlags(options),
+        configuredTools: Object.keys(config.tools),
+        stdinIsTTY: Boolean(process.stdin.isTTY),
+        stdoutIsTTY: Boolean(process.stdout.isTTY),
+      });
+
+      if ("cancelled" in resolved) {
+        process.exitCode = 0;
+        return;
+      }
+
       await runInstallCommand({
         source,
-        tool: options.tool,
+        tool: resolved.tool,
         force: Boolean(options.force),
-        target: parseTargetOptions(options),
+        target: resolved.target,
       });
     });
 

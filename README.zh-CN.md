@@ -79,13 +79,17 @@ skill doctor --tool opencode --repair-registry
 | 命令 | 说明 |
 | --- | --- |
 | `skill search <github-repo-url> [--filter <text>]` | 搜索公开 GitHub 仓库默认分支中的仓库根目录 `SKILL.md` 与嵌套 skill 文件，无需克隆；`--filter` 对 skill 名称、描述和路径进行不区分大小写的子串匹配 |
-| `skill install <source> --tool <tool-or-all>（三选一目标：--global / --project / --dir <path>）` | 从 git/npm/本地源安装 bundle |
+| `skill install <source> [--tool <tool-or-all>] [三选一目标：--global / --project / --dir <path>]` | 从 git/npm/本地源安装 bundle |
 | `skill list [--tool <tool-or-all>] [--status <all,managed,discovered>] [--expand]` | 查看 bundle 列表，并可展开成员 skill |
 | `skill remove <bundle-name> --tool <tool-or-all>（三选一目标：--global / --project / --dir <path>）` | 删除已安装 bundle |
 | `skill register [--tool <tool-or-all>]` | 扫描并回填注册表 |
 | `skill doctor [--tool <tool-or-all>] [--repair-registry]` | 检查状态，并可选修复注册表 |
 | `skill relink [--tool <tool-or-all>]` | 重建缺失或损坏的软链接 |
 | `skill prune` | 清理未引用的 store 缓存 |
+
+当 `skill install` 在交互式终端中运行且缺少安装输入时，会按以下顺序提示：先选择安装范围；如果范围是 `--dir`，再输入自定义目录路径；最后选择工具。工具选择支持已配置的工具 id 和 `all`。
+
+在非交互环境中，缺少必填安装输入时不会触发提示，而是直接返回 user-input 错误。
 
 ## 工作原理
 

@@ -79,13 +79,17 @@ skill doctor --tool opencode --repair-registry
 | Command | Description |
 | --- | --- |
 | `skill search <github-repo-url> [--filter <text>]` | Search a public GitHub repository default branch for a repository-root `SKILL.md` and nested skill files without cloning; `--filter` does a case-insensitive substring match against skill name, description, and path |
-| `skill install <source> --tool <tool-or-all> (one target: --global / --project / --dir <path>)` | Install bundle from git/npm/local source |
+| `skill install <source> [--tool <tool-or-all>] [one target: --global / --project / --dir <path>]` | Install bundle from git/npm/local source |
 | `skill list [--tool <tool-or-all>] [--status <all,managed,discovered>] [--expand]` | List bundles and optionally expand member skills |
 | `skill remove <bundle-name> --tool <tool-or-all> (one target: --global / --project / --dir <path>)` | Remove an installed bundle |
 | `skill register [--tool <tool-or-all>]` | Backfill registry from discovered installs |
 | `skill doctor [--tool <tool-or-all>] [--repair-registry]` | Validate install state and optionally repair registry |
 | `skill relink [--tool <tool-or-all>]` | Recreate missing or broken symlinks |
 | `skill prune` | Remove unreferenced store entries |
+
+When `skill install` runs in an interactive terminal, missing install inputs are prompted in this order: install scope first, then custom directory path when scope is `--dir`, then tool selection. Tool selection supports configured tool ids and `all`.
+
+In non-interactive environments, missing required install inputs do not trigger prompts. The command exits with a user-input error instead.
 
 ## How it works
 

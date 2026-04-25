@@ -116,7 +116,7 @@ The CLI must install skills from a source to one or multiple tools.
 
 Command:
 
-`skill install <source> --tool <tool|all> [--global|--project|--dir <path>] [--force]`
+`skill install <source> [--tool <tool|all>] [--global|--project|--dir <path>] [--force]`
 
 Expected behavior:
 
@@ -125,6 +125,9 @@ Expected behavior:
 3. discover skill entries using tool-specific discovery rules
 4. create symlinks in target directories
 5. record installation state in local registry
+6. in interactive terminals, prompt for missing inputs in this order: install scope, custom directory path when scope is `dir`, then tool selection
+7. tool selection must support a single configured tool id or `all`
+8. in non-interactive environments, missing required install inputs must return a user-input error instead of prompting
 
 ### FR-2 Remove
 
