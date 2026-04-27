@@ -19,6 +19,12 @@ export function createSourceCacheKey(descriptor: SourceDescriptor): string {
   return createHash("sha256").update(normalizedSourceText(descriptor)).digest("hex");
 }
 
+export function createGitStoreKey(input: { repoCanonical: string; commitSha: string }): string {
+  return createHash("sha256")
+    .update(`git:${input.repoCanonical}@${input.commitSha}`)
+    .digest("hex");
+}
+
 async function updateHashForDirectory(
   hash: ReturnType<typeof createHash>,
   rootDir: string,

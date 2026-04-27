@@ -28,6 +28,8 @@ Different coding CLIs use different skill directories. Managing the same skill s
 - Health checks and repair flows via `doctor` and `relink`
 - Store cleanup via `prune`
 
+Git installs resolve the requested branch, tag, or remote `HEAD` to a concrete commit before persisting to `~/.skills/store`, so the same repository commit is stored once and reused across projects.
+
 ## Installation
 
 ```bash
@@ -94,10 +96,11 @@ In non-interactive environments, missing required install inputs do not trigger 
 ## How it works
 
 1. Resolve source (`git`, `npm`, or local path)
-2. Fetch and persist into local store (default `~/.skills`)
-3. Discover skill members via tool rules (default `**/SKILL.md`)
-4. Create symlinks in target tool directories
-5. Track bundle + members in registry (`registry.json`)
+2. For git sources, resolve the requested ref to a concrete remote commit SHA
+3. Fetch and persist into local store (default `~/.skills`)
+4. Discover skill members via tool rules (default `**/SKILL.md`)
+5. Create symlinks in target tool directories
+6. Track bundle + members in registry (`registry.json`)
 
 ## Supported tools and defaults
 

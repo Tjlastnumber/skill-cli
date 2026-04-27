@@ -28,6 +28,8 @@
 - `doctor` / `relink` 支持检测和修复
 - `prune` 支持清理未引用的 store 缓存
 
+`git` 安装会先把请求的 branch、tag 或远端 `HEAD` 解析到具体 commit，再写入 `~/.skills/store`，因此同一个仓库的同一个 commit 只会存一份，可被不同项目复用。
+
 ## 安装
 
 ```bash
@@ -94,10 +96,11 @@ skill doctor --tool opencode --repair-registry
 ## 工作原理
 
 1. 解析 source（`git` / `npm` / 本地路径）
-2. 拉取并持久化到本地 store（默认 `~/.skills`）
-3. 按工具规则发现 skill 成员（默认 `**/SKILL.md`）
-4. 在目标工具目录创建软链接
-5. 在 `registry.json` 中记录 bundle 与成员关系
+2. 对 `git` 源先把请求的 ref 解析为远端具体 commit SHA
+3. 拉取并持久化到本地 store（默认 `~/.skills`）
+4. 按工具规则发现 skill 成员（默认 `**/SKILL.md`）
+5. 在目标工具目录创建软链接
+6. 在 `registry.json` 中记录 bundle 与成员关系
 
 ## 支持工具与默认目录
 

@@ -3,7 +3,9 @@ import { spawn } from "node:child_process";
 import { join, resolve } from "node:path";
 
 import { SourceError } from "../errors.js";
-import { createSourceCacheKey, createSourceSnapshotKey } from "./cache-key.js";
+import { createGitStoreKey, createSourceCacheKey, createSourceSnapshotKey } from "./cache-key.js";
+import { isCommitSha } from "./git-ref.js";
+import { resolveGitSourceRef } from "./resolve-git-ref.js";
 import type { SourceDescriptor } from "./types.js";
 
 export interface CommandRunnerResult {
@@ -30,10 +32,6 @@ export interface FetchSourceOptions {
 export interface FetchSourceResult {
   sourceDir: string;
   cacheKey: string;
-}
-
-function isCommitSha(value: string | undefined): value is string {
-  return Boolean(value && /^[0-9a-f]{7,40}$/i.test(value));
 }
 
 function toSlug(text: string): string {
@@ -170,21 +168,42 @@ export async function fetchSource(
 
   if (descriptor.kind === "git") {
     const sourceDir = join(options.tempDir, `git-${toSlug(requestCacheKey.slice(0, 16))}`);
+    const resolvedGitSource = await resolveGitSourceRef(descriptor, runCommand);
 
     if (isCommitSha(descriptor.ref)) {
       await runCommand("git", ["clone", descriptor.url, sourceDir]);
       await runCommand("git", ["checkout", descriptor.ref], { cwd: sourceDir });
-    } else {
-      const args = descriptor.ref
-        ? ["clone", "--depth", "1", "--branch", descriptor.ref, descriptor.url, sourceDir]
-        : ["clone", "--depth", "1", descriptor.url, sourceDir];
+      const actualHead = (await runCommand("git", ["rev-parse", "HEAD"], { cwd: sourceDir })).stdout.trim();
 
-      await runCommand("git", args);
+      return {
+        sourceDir,
+        cacheKey: createGitStoreKey({
+          repoCanonical: resolvedGitSource.repoCanonical,
+          commitSha: actualHead,
+        }),
+      };
+    }
+
+    const args = resolvedGitSource.cloneBranchName
+      ? ["clone", "--depth", "1", "--branch", resolvedGitSource.cloneBranchName, descriptor.url, sourceDir]
+      : ["clone", "--depth", "1", descriptor.url, sourceDir];
+
+    await runCommand("git", args);
+
+    const actualHead = (await runCommand("git", ["rev-parse", "HEAD"], { cwd: sourceDir })).stdout.trim();
+
+    if (actualHead !== resolvedGitSource.resolvedCommitSha) {
+      throw new SourceError(
+        `Resolved git ref '${descriptor.ref}' to ${resolvedGitSource.resolvedCommitSha}, but cloned HEAD was ${actualHead}`,
+      );
     }
 
     return {
       sourceDir,
-      cacheKey: await createSourceSnapshotKey(sourceDir),
+      cacheKey: createGitStoreKey({
+        repoCanonical: resolvedGitSource.repoCanonical,
+        commitSha: resolvedGitSource.resolvedCommitSha,
+      }),
     };
   }
 

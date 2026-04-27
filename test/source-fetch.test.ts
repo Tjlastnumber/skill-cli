@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -8,6 +9,7 @@ import {
   type CommandRunner,
   type CommandRunnerResult,
 } from "../src/core/source/fetch.js";
+import { SourceError } from "../src/core/errors.js";
 import type { SourceDescriptor } from "../src/core/source/types.js";
 
 const cleanupDirs: string[] = [];
@@ -49,13 +51,22 @@ describe("fetchSource", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("runs git clone for git sources", async () => {
+  it("resolves git branch refs to a remote commit and uses a commit-based cache key", async () => {
     const base = await mkdtemp(join(tmpdir(), "skill-cli-fetch-git-"));
     cleanupDirs.push(base);
 
-    const calls: Array<{ command: string; args: string[] }> = [];
-    const runner: CommandRunner = async (command, args): Promise<CommandRunnerResult> => {
-      calls.push({ command, args });
+    const remoteHeadSha = "0123456789abcdef0123456789abcdef01234567";
+    const calls: Array<{ command: string; args: string[]; cwd?: string }> = [];
+    const runner: CommandRunner = async (command, args, options): Promise<CommandRunnerResult> => {
+      calls.push({ command, args, cwd: options?.cwd });
+
+      if (command === "git" && args[0] === "ls-remote") {
+        return {
+          stdout: `${remoteHeadSha}\trefs/heads/main\n`,
+          stderr: "",
+          exitCode: 0,
+        };
+      }
 
       if (command === "git" && args[0] === "clone") {
         const targetDir = args[args.length - 1];
@@ -63,6 +74,14 @@ describe("fetchSource", () => {
           await mkdir(targetDir, { recursive: true });
           await writeFile(join(targetDir, "SKILL.md"), "# git skill\n");
         }
+      }
+
+      if (command === "git" && args[0] === "rev-parse") {
+        return {
+          stdout: `${remoteHeadSha}\n`,
+          stderr: "",
+          exitCode: 0,
+        };
       }
 
       return { stdout: "", stderr: "", exitCode: 0 };
@@ -81,16 +100,299 @@ describe("fetchSource", () => {
     });
 
     expect(result.sourceDir).toContain(join(base, "tmp"));
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.command).toBe("git");
-    expect(calls[0]?.args).toEqual([
-      "clone",
-      "--depth",
-      "1",
-      "--branch",
-      "main",
-      "https://github.com/acme/skills.git",
-      result.sourceDir,
+    expect(result.cacheKey).toBe(
+      createHash("sha256")
+        .update(`git:github.com/acme/skills@${remoteHeadSha}`)
+        .digest("hex"),
+    );
+    expect(calls).toEqual([
+      {
+        command: "git",
+        args: ["ls-remote", "https://github.com/acme/skills.git", "refs/heads/main", "refs/tags/main", "refs/tags/main^{}"],
+        cwd: undefined,
+      },
+      {
+        command: "git",
+        args: [
+          "clone",
+          "--depth",
+          "1",
+          "--branch",
+          "main",
+          "https://github.com/acme/skills.git",
+          result.sourceDir,
+        ],
+        cwd: undefined,
+      },
+      {
+        command: "git",
+        args: ["rev-parse", "HEAD"],
+        cwd: result.sourceDir,
+      },
+    ]);
+  });
+
+  it("resolves the remote default HEAD commit for git sources without an explicit ref", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-fetch-git-head-"));
+    cleanupDirs.push(base);
+
+    const remoteHeadSha = "89abcdef0123456789abcdef0123456789abcdef";
+    const calls: Array<{ command: string; args: string[]; cwd?: string }> = [];
+    const runner: CommandRunner = async (command, args, options): Promise<CommandRunnerResult> => {
+      calls.push({ command, args, cwd: options?.cwd });
+
+      if (command === "git" && args[0] === "ls-remote") {
+        return {
+          stdout: `ref: refs/heads/main\tHEAD\n${remoteHeadSha}\tHEAD\n`,
+          stderr: "",
+          exitCode: 0,
+        };
+      }
+
+      if (command === "git" && args[0] === "clone") {
+        const targetDir = args[args.length - 1];
+        if (targetDir) {
+          await mkdir(targetDir, { recursive: true });
+          await writeFile(join(targetDir, "SKILL.md"), "# git skill\n");
+        }
+      }
+
+      if (command === "git" && args[0] === "rev-parse") {
+        return {
+          stdout: `${remoteHeadSha}\n`,
+          stderr: "",
+          exitCode: 0,
+        };
+      }
+
+      return { stdout: "", stderr: "", exitCode: 0 };
+    };
+
+    const descriptor: SourceDescriptor = {
+      kind: "git",
+      raw: "git@github.com:acme/skills.git",
+      url: "git@github.com:acme/skills.git",
+    };
+
+    const result = await fetchSource(descriptor, {
+      tempDir: join(base, "tmp"),
+      runCommand: runner,
+    });
+
+    expect(result.cacheKey).toBe(
+      createHash("sha256")
+        .update(`git:github.com/acme/skills@${remoteHeadSha}`)
+        .digest("hex"),
+    );
+    expect(calls).toEqual([
+      {
+        command: "git",
+        args: ["ls-remote", "--symref", "git@github.com:acme/skills.git", "HEAD"],
+        cwd: undefined,
+      },
+      {
+        command: "git",
+        args: [
+          "clone",
+          "--depth",
+          "1",
+          "--branch",
+          "main",
+          "git@github.com:acme/skills.git",
+          result.sourceDir,
+        ],
+        cwd: undefined,
+      },
+      {
+        command: "git",
+        args: ["rev-parse", "HEAD"],
+        cwd: result.sourceDir,
+      },
+    ]);
+  });
+
+  it("resolves annotated git tags to their peeled commit for cache-keying", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-fetch-git-tag-"));
+    cleanupDirs.push(base);
+
+    const tagObjectSha = "1111111111111111111111111111111111111111";
+    const peeledCommitSha = "2222222222222222222222222222222222222222";
+    const calls: Array<{ command: string; args: string[]; cwd?: string }> = [];
+    const runner: CommandRunner = async (command, args, options): Promise<CommandRunnerResult> => {
+      calls.push({ command, args, cwd: options?.cwd });
+
+      if (command === "git" && args[0] === "ls-remote") {
+        return {
+          stdout: [
+            `${tagObjectSha}\trefs/tags/v1.2.3`,
+            `${peeledCommitSha}\trefs/tags/v1.2.3^{}`,
+            "",
+          ].join("\n"),
+          stderr: "",
+          exitCode: 0,
+        };
+      }
+
+      if (command === "git" && args[0] === "clone") {
+        const targetDir = args[args.length - 1];
+        if (targetDir) {
+          await mkdir(targetDir, { recursive: true });
+          await writeFile(join(targetDir, "SKILL.md"), "# git skill\n");
+        }
+      }
+
+      if (command === "git" && args[0] === "rev-parse") {
+        return {
+          stdout: `${peeledCommitSha}\n`,
+          stderr: "",
+          exitCode: 0,
+        };
+      }
+
+      return { stdout: "", stderr: "", exitCode: 0 };
+    };
+
+    const descriptor: SourceDescriptor = {
+      kind: "git",
+      raw: "https://github.com/acme/skills.git#v1.2.3",
+      url: "https://github.com/acme/skills.git",
+      ref: "v1.2.3",
+    };
+
+    const result = await fetchSource(descriptor, {
+      tempDir: join(base, "tmp"),
+      runCommand: runner,
+    });
+
+    expect(result.cacheKey).toBe(
+      createHash("sha256")
+        .update(`git:github.com/acme/skills@${peeledCommitSha}`)
+        .digest("hex"),
+    );
+    expect(calls).toEqual([
+      {
+        command: "git",
+        args: ["ls-remote", "https://github.com/acme/skills.git", "refs/heads/v1.2.3", "refs/tags/v1.2.3", "refs/tags/v1.2.3^{}"],
+        cwd: undefined,
+      },
+      {
+        command: "git",
+        args: [
+          "clone",
+          "--depth",
+          "1",
+          "--branch",
+          "v1.2.3",
+          "https://github.com/acme/skills.git",
+          result.sourceDir,
+        ],
+        cwd: undefined,
+      },
+      {
+        command: "git",
+        args: ["rev-parse", "HEAD"],
+        cwd: result.sourceDir,
+      },
+    ]);
+  });
+
+  it("fails when a git ref matches both a branch and a tag", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-fetch-git-ambiguous-ref-"));
+    cleanupDirs.push(base);
+
+    const runner: CommandRunner = async (command, args): Promise<CommandRunnerResult> => {
+      if (command === "git" && args[0] === "ls-remote") {
+        return {
+          stdout: [
+            `3333333333333333333333333333333333333333\trefs/heads/release`,
+            `4444444444444444444444444444444444444444\trefs/tags/release`,
+            "",
+          ].join("\n"),
+          stderr: "",
+          exitCode: 0,
+        };
+      }
+
+      throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
+    };
+
+    const descriptor: SourceDescriptor = {
+      kind: "git",
+      raw: "https://github.com/acme/skills.git#release",
+      url: "https://github.com/acme/skills.git",
+      ref: "release",
+    };
+
+    await expect(
+      fetchSource(descriptor, {
+        tempDir: join(base, "tmp"),
+        runCommand: runner,
+      }),
+    ).rejects.toThrow(new SourceError("Ambiguous git ref 'release': matches both a branch and a tag"));
+  });
+
+  it("normalizes abbreviated commit refs to the checked-out full commit for cache-keying", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-fetch-git-short-sha-"));
+    cleanupDirs.push(base);
+
+    const shortSha = "0123456";
+    const fullSha = "0123456789abcdef0123456789abcdef01234567";
+    const calls: Array<{ command: string; args: string[]; cwd?: string }> = [];
+    const runner: CommandRunner = async (command, args, options): Promise<CommandRunnerResult> => {
+      calls.push({ command, args, cwd: options?.cwd });
+
+      if (command === "git" && args[0] === "clone") {
+        const targetDir = args[args.length - 1];
+        if (targetDir) {
+          await mkdir(targetDir, { recursive: true });
+          await writeFile(join(targetDir, "SKILL.md"), "# git skill\n");
+        }
+      }
+
+      if (command === "git" && args[0] === "rev-parse") {
+        return {
+          stdout: `${fullSha}\n`,
+          stderr: "",
+          exitCode: 0,
+        };
+      }
+
+      return { stdout: "", stderr: "", exitCode: 0 };
+    };
+
+    const descriptor: SourceDescriptor = {
+      kind: "git",
+      raw: `acme/skills#${shortSha}`,
+      url: "https://github.com/acme/skills.git",
+      ref: shortSha,
+    };
+
+    const result = await fetchSource(descriptor, {
+      tempDir: join(base, "tmp"),
+      runCommand: runner,
+    });
+
+    expect(result.cacheKey).toBe(
+      createHash("sha256")
+        .update(`git:github.com/acme/skills@${fullSha}`)
+        .digest("hex"),
+    );
+    expect(calls).toEqual([
+      {
+        command: "git",
+        args: ["clone", "https://github.com/acme/skills.git", result.sourceDir],
+        cwd: undefined,
+      },
+      {
+        command: "git",
+        args: ["checkout", shortSha],
+        cwd: result.sourceDir,
+      },
+      {
+        command: "git",
+        args: ["rev-parse", "HEAD"],
+        cwd: result.sourceDir,
+      },
     ]);
   });
 
@@ -110,6 +412,14 @@ describe("fetchSource", () => {
         }
       }
 
+      if (command === "git" && args[0] === "rev-parse") {
+        return {
+          stdout: "0123456789abcdef0123456789abcdef01234567\n",
+          stderr: "",
+          exitCode: 0,
+        };
+      }
+
       return { stdout: "", stderr: "", exitCode: 0 };
     };
 
@@ -125,7 +435,12 @@ describe("fetchSource", () => {
       runCommand: runner,
     });
 
-    expect(calls).toHaveLength(2);
+    expect(result.cacheKey).toBe(
+      createHash("sha256")
+        .update("git:github.com/acme/skills@0123456789abcdef0123456789abcdef01234567")
+        .digest("hex"),
+    );
+    expect(calls).toHaveLength(3);
     expect(calls[0]).toEqual({
       command: "git",
       args: ["clone", "https://github.com/acme/skills.git", result.sourceDir],
@@ -134,6 +449,11 @@ describe("fetchSource", () => {
     expect(calls[1]).toEqual({
       command: "git",
       args: ["checkout", "0123456789abcdef0123456789abcdef01234567"],
+      cwd: result.sourceDir,
+    });
+    expect(calls[2]).toEqual({
+      command: "git",
+      args: ["rev-parse", "HEAD"],
       cwd: result.sourceDir,
     });
   });

@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
 
+import { describeGitRepository } from "../source/git-repo.js";
 import type { SourceDescriptor } from "../source/types.js";
 import { readSourceMetadata } from "../store/source-metadata.js";
 
@@ -13,59 +14,9 @@ export interface BundleIdentity {
   sourceCanonical: string;
 }
 
-function stripRef(value: string): string {
-  const hashIndex = value.indexOf("#");
-  if (hashIndex === -1) {
-    return value;
-  }
-  return value.slice(0, hashIndex);
-}
-
 function normalizeGitSource(rawInput: string): { canonical: string; bundleName: string } | undefined {
-  const input = stripRef(rawInput).trim();
-
-  const gitSshMatch = input.match(/^git@([^:]+):(.+)$/);
-  if (gitSshMatch) {
-    const host = gitSshMatch[1];
-    const pathPart = gitSshMatch[2].replace(/\.git$/, "").replace(/^\//, "");
-    const segments = pathPart.split("/").filter(Boolean);
-    const repoName = segments[segments.length - 1];
-    if (!repoName) {
-      return undefined;
-    }
-
-    return {
-      canonical: `${host}/${pathPart}`,
-      bundleName: repoName,
-    };
-  }
-
-  if (/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(input)) {
-    const parts = input.split("/");
-    const repoName = parts[1];
-    if (!repoName) {
-      return undefined;
-    }
-
-    return {
-      canonical: `github.com/${input.replace(/\.git$/, "")}`,
-      bundleName: repoName.replace(/\.git$/, ""),
-    };
-  }
-
   try {
-    const url = new URL(input);
-    const cleanPath = url.pathname.replace(/^\//, "").replace(/\.git$/, "");
-    const segments = cleanPath.split("/").filter(Boolean);
-    const repoName = segments[segments.length - 1];
-    if (!repoName) {
-      return undefined;
-    }
-
-    return {
-      canonical: `${url.host}/${cleanPath}`,
-      bundleName: repoName,
-    };
+    return describeGitRepository(rawInput);
   } catch {
     return undefined;
   }

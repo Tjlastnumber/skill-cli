@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, readlink, rm, writeFile, lstat } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readlink, readdir, rm, writeFile, lstat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -521,5 +521,121 @@ describe("runInstallCommand", () => {
     };
     expect(registry.bundles[0]?.members).toHaveLength(1);
     expect(registry.bundles[0]?.members[0]?.skillName).toBe("alpha-skill");
+  });
+
+  it("reuses one stored git source across different project installs of the same default HEAD", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-install-git-project-reuse-"));
+    cleanupDirs.push(base);
+
+    const homeDir = join(base, "home");
+    const storeDir = join(base, "skill-store");
+    const repoA = join(base, "workspace", "repo-a");
+    const repoB = join(base, "workspace", "repo-b");
+    const resolvedCommitSha = "abcdef0123456789abcdef0123456789abcdef01";
+
+    await mkdir(join(homeDir, ".config", "skill-cli"), { recursive: true });
+    await mkdir(join(repoA, ".git"), { recursive: true });
+    await mkdir(join(repoB, ".git"), { recursive: true });
+
+    await writeFile(
+      join(homeDir, ".config", "skill-cli", "config.json"),
+      JSON.stringify(
+        {
+          storeDir,
+        },
+        null,
+        2,
+      ),
+    );
+
+    let cloneCount = 0;
+    const runner = async (
+      command: string,
+      args: string[],
+      options?: { cwd?: string },
+    ): Promise<{ stdout: string; stderr: string; exitCode: number }> => {
+      if (command === "git" && args[0] === "ls-remote") {
+        return {
+          stdout: `ref: refs/heads/main\tHEAD\n${resolvedCommitSha}\tHEAD\n`,
+          stderr: "",
+          exitCode: 0,
+        };
+      }
+
+      if (command === "git" && args[0] === "clone") {
+        cloneCount += 1;
+        const targetDir = args[args.length - 1];
+        if (targetDir) {
+          await mkdir(join(targetDir, ".git"), { recursive: true });
+          await mkdir(join(targetDir, "alpha-skill"), { recursive: true });
+          await writeFile(join(targetDir, "alpha-skill", "SKILL.md"), "# alpha\n");
+          await writeFile(join(targetDir, ".git", "clone-id"), `${cloneCount}\n`);
+        }
+
+        return { stdout: "", stderr: "", exitCode: 0 };
+      }
+
+      if (command === "git" && args[0] === "rev-parse") {
+        return {
+          stdout: `${resolvedCommitSha}\n`,
+          stderr: "",
+          exitCode: 0,
+        };
+      }
+
+      throw new Error(`Unexpected command: ${command} ${args.join(" ")} cwd=${options?.cwd ?? ""}`);
+    };
+
+    const first = await runInstallCommand(
+      {
+        source: "git@github.com:acme/skills.git",
+        tool: "opencode",
+        target: { type: "project" },
+        force: false,
+      },
+      {
+        cwd: repoA,
+        homeDir,
+        output: quietOutput(),
+        runCommand: runner,
+      },
+    );
+
+    const second = await runInstallCommand(
+      {
+        source: "git@github.com:acme/skills.git",
+        tool: "opencode",
+        target: { type: "project" },
+        force: false,
+      },
+      {
+        cwd: repoB,
+        homeDir,
+        output: quietOutput(),
+        runCommand: runner,
+      },
+    );
+
+    expect(first.storedSourceDir).toBe(second.storedSourceDir);
+    expect(await readdir(join(storeDir, "store"))).toHaveLength(1);
+
+    const firstLinkTarget = await readlink(join(repoA, ".opencode", "skills", "alpha-skill"));
+    const secondLinkTarget = await readlink(join(repoB, ".opencode", "skills", "alpha-skill"));
+    expect(firstLinkTarget).toBe(secondLinkTarget);
+    expect(firstLinkTarget).toBe(first.storedSourceDir + "/alpha-skill");
+
+    const registryRaw = await readFile(join(storeDir, "registry.json"), "utf8");
+    const registry = JSON.parse(registryRaw) as {
+      bundles: Array<{ targetRoot: string; cacheKey: string; storedSourceDir: string }>;
+    };
+
+    expect(registry.bundles).toHaveLength(2);
+    expect(new Set(registry.bundles.map((bundle) => bundle.targetRoot))).toEqual(
+      new Set([join(repoA, ".opencode", "skills"), join(repoB, ".opencode", "skills")]),
+    );
+    expect(new Set(registry.bundles.map((bundle) => bundle.cacheKey)).size).toBe(1);
+    expect(new Set(registry.bundles.map((bundle) => bundle.storedSourceDir))).toEqual(
+      new Set([first.storedSourceDir]),
+    );
   });
 });
