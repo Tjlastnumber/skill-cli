@@ -13,6 +13,7 @@ import * as installCommandModule from "../src/commands/install.js";
 import * as installFromLockfileCommandModule from "../src/commands/install-from-lockfile.js";
 import * as installInputsModule from "../src/commands/install-inputs.js";
 import * as loadConfigModule from "../src/core/config/load.js";
+import { ExitCode } from "../src/core/errors.js";
 import { runCli } from "../src/cli.js";
 
 const stdinIsTTYDescriptor = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
@@ -237,6 +238,85 @@ describe("runCli install", () => {
       force: false,
     });
     expect(runInstallFromLockfileCommandSpy).not.toHaveBeenCalled();
+  });
+
+  it("passes repeated --skill options through to source installs", async () => {
+    vi.spyOn(loadConfigModule, "loadConfig").mockResolvedValue({
+      storeDir: ".skill-store",
+      tools: {
+        codex: {
+          globalDir: ".codex/global",
+          projectDir: ".codex/project",
+          entryPattern: "*",
+          nameStrategy: "basename",
+        },
+      },
+    });
+    vi.spyOn(installInputsModule, "resolveInstallInputs").mockResolvedValue({
+      tool: "codex",
+      target: { type: "project" },
+    });
+    const runInstallCommandSpy = vi
+      .spyOn(installCommandModule, "runInstallCommand")
+      .mockResolvedValue(undefined);
+
+    await runCli([
+      "node",
+      "skill",
+      "install",
+      "./skills",
+      "--skill",
+      "browser",
+      "--skill",
+      "debugger",
+    ]);
+
+    expect(runInstallCommandSpy).toHaveBeenCalledWith({
+      source: "./skills",
+      tool: "codex",
+      target: { type: "project" },
+      force: false,
+      skills: ["browser", "debugger"],
+    });
+  });
+
+  it("rejects --skill when install source is omitted", async () => {
+    const loadConfigSpy = vi.spyOn(loadConfigModule, "loadConfig").mockResolvedValue({
+      storeDir: ".skill-store",
+      tools: {
+        codex: {
+          globalDir: ".codex/global",
+          projectDir: ".codex/project",
+          entryPattern: "*",
+          nameStrategy: "basename",
+        },
+      },
+    });
+    const resolveInstallInputsSpy = vi.spyOn(installInputsModule, "resolveInstallInputs").mockResolvedValue({
+      tool: "codex",
+      target: { type: "project" },
+    });
+    const runInstallCommandSpy = vi.spyOn(installCommandModule, "runInstallCommand");
+    const runInstallFromLockfileCommandSpy = vi.spyOn(
+      installFromLockfileCommandModule,
+      "runInstallFromLockfileCommand",
+    );
+    const stderrWriteSpy = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    const stdoutWriteSpy = vi.spyOn(process.stdout, "write").mockReturnValue(true);
+
+    await runCli(["node", "skill", "install", "--skill", "browser"]);
+
+    expect(runInstallCommandSpy).not.toHaveBeenCalled();
+    expect(runInstallFromLockfileCommandSpy).not.toHaveBeenCalled();
+    expect(loadConfigSpy).not.toHaveBeenCalled();
+    expect(resolveInstallInputsSpy).not.toHaveBeenCalled();
+    expect(stderrWriteSpy).toHaveBeenCalledWith(
+      "ERROR: The --skill option requires a source passed to 'skill install <source>'\n",
+    );
+    expect(stdoutWriteSpy).toHaveBeenCalledWith(
+      "Suggestion: Pass a source to 'skill install <source>' or remove --skill\n",
+    );
+    expect(process.exitCode).toBe(ExitCode.USER_INPUT);
   });
 
   it("resolves install inputs interactively end-to-end including the all tool option", async () => {

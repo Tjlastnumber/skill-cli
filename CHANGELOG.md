@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add `skill install <source> --skill <name>` with repeatable `--skill` support, including `--skill '*'` for installing every discovered skill from a source.
+- Keep previously installed named skills when the same source is installed again with different `--skill` selections for the same tool and target.
+
+### Changed
+
+- Change `skills-lock.yaml` from bundle-based v1 entries to skill-based v2 entries and drop v1 compatibility; regenerate existing lockfiles with `skill lock --force`.
+
+### Fixed
+
+- Stop restoring previously full-installed project skills from stale registry state after the project skill links were deleted and a later `skill install --skill <name>` only requests one skill.
+
 ## [0.4.0] - 2026-04-27
 
 ### Added

@@ -2,6 +2,7 @@ import { lstat } from "node:fs/promises";
 import { homedir } from "node:os";
 
 import { loadConfig } from "../core/config/load.js";
+import { discoverSkills } from "../core/discovery/discover.js";
 import { groupScannedSkillsIntoBundles } from "../core/discovery/group-scanned-bundles.js";
 import { scanInstalledSkills } from "../core/discovery/scan-installed.js";
 import { ExitCode, SkillCliError } from "../core/errors.js";
@@ -32,6 +33,11 @@ export interface LockCommandResult {
   bundleCount: number;
 }
 
+interface LockedSkillEntry {
+  source: string;
+  name: string;
+}
+
 function memberKey(member: { skillName: string; linkPath: string }): string {
   return `${member.skillName}::${member.linkPath}`;
 }
@@ -46,6 +52,42 @@ async function pathExists(pathValue: string): Promise<boolean> {
     }
     throw error;
   }
+}
+
+function ensureUniqueSkillNames(skillNames: string[], bundleName: string): void {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+
+  for (const skillName of skillNames) {
+    if (seen.has(skillName)) {
+      duplicates.add(skillName);
+      continue;
+    }
+
+    seen.add(skillName);
+  }
+
+  if (duplicates.size > 0) {
+    throw new SkillCliError(
+      `Duplicate skill names discovered while locking bundle '${bundleName}': ${Array.from(duplicates).join(", ")}`,
+      ExitCode.SOURCE,
+      "Use unique skill directory names or remove the conflicting SKILL.md files",
+    );
+  }
+}
+
+function setsEqual(left: Set<string>, right: Set<string>): boolean {
+  if (left.size !== right.size) {
+    return false;
+  }
+
+  for (const value of left) {
+    if (!right.has(value)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 export async function runLockCommand(
@@ -141,25 +183,100 @@ export async function runLockCommand(
     );
   }
 
-  const lockedSources = Array.from(
-    new Set(
-      await Promise.all(
-        eligibleBundles.map(async (bundle) => {
-          return await resolveLockedSourceForBundle({ cwd, bundle });
-        }),
-      ),
-    ),
-  ).sort((left, right) => left.localeCompare(right));
+  const lockedSkillGroups = new Map<
+    string,
+    {
+      source: string;
+      allSkillNames: Set<string>;
+      selectedSkillNames: Set<string>;
+    }
+  >();
+
+  for (const bundle of eligibleBundles) {
+    const toolConfig = config.tools[bundle.tool];
+    if (!toolConfig) {
+      continue;
+    }
+
+    const lockedSource = await resolveLockedSourceForBundle({ cwd, bundle });
+    const discoveredSkillNames = (
+      await discoverSkills({
+        sourceDir: bundle.storedSourceDir,
+        entryPattern: toolConfig.entryPattern,
+        nameStrategy: toolConfig.nameStrategy,
+        rootSkillName: bundle.bundleName,
+      })
+    ).map((skill) => skill.skillName);
+    ensureUniqueSkillNames(discoveredSkillNames, bundle.bundleName);
+    const bundleAllSkillNames = new Set(discoveredSkillNames);
+    const bundleSelectedSkillNames = new Set(bundle.members.map((member) => member.skillName));
+
+    const existingGroup = lockedSkillGroups.get(lockedSource);
+    if (
+      existingGroup &&
+      (!setsEqual(existingGroup.allSkillNames, bundleAllSkillNames) ||
+        !setsEqual(existingGroup.selectedSkillNames, bundleSelectedSkillNames))
+    ) {
+      throw new SkillCliError(
+        `Cannot generate a shared lockfile for source '${lockedSource}': conflicting skill selections across tools`,
+        ExitCode.USER_INPUT,
+        "Run 'skill lock --tool <tool>' for one tool at a time, or align the installed skill names across tools",
+      );
+    }
+
+    const group =
+      existingGroup ??
+      {
+        source: lockedSource,
+        allSkillNames: new Set<string>(),
+        selectedSkillNames: new Set<string>(),
+      };
+
+    for (const skillName of bundleAllSkillNames) {
+      group.allSkillNames.add(skillName);
+    }
+
+    for (const skillName of bundleSelectedSkillNames) {
+      group.selectedSkillNames.add(skillName);
+    }
+
+    lockedSkillGroups.set(lockedSource, group);
+  }
+
+  const lockedSkills: LockedSkillEntry[] = Array.from(lockedSkillGroups.values())
+    .flatMap((group) => {
+      const allSkillNames = Array.from(group.allSkillNames).sort((left, right) => left.localeCompare(right));
+      const selectedSkillNames = Array.from(group.selectedSkillNames).sort((left, right) =>
+        left.localeCompare(right),
+      );
+
+      if (
+        selectedSkillNames.length === allSkillNames.length &&
+        selectedSkillNames.every((skillName, index) => skillName === allSkillNames[index])
+      ) {
+        return [{ source: group.source, name: "*" }];
+      }
+
+      return selectedSkillNames.map((skillName) => ({
+        source: group.source,
+        name: skillName,
+      }));
+    })
+    .sort(
+      (left, right) =>
+        left.source.localeCompare(right.source) ||
+        (left.name === "*" ? -1 : right.name === "*" ? 1 : left.name.localeCompare(right.name)),
+    );
 
   await writeSkillsLockfile(outputPath, {
-    version: 1,
-    bundles: lockedSources.map((source) => ({ source })),
+    version: 2,
+    skills: lockedSkills,
   });
 
-  output.info(`Wrote ${lockedSources.length} locked bundle source(s) to ${outputPath}`);
+  output.info(`Wrote ${lockedSkills.length} locked skill entr${lockedSkills.length === 1 ? "y" : "ies"} to ${outputPath}`);
 
   return {
     outputPath,
-    bundleCount: lockedSources.length,
+    bundleCount: lockedSkills.length,
   };
 }

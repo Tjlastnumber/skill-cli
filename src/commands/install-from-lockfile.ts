@@ -20,18 +20,23 @@ export interface InstallFromLockfileCommandResult {
   installedSources: string[];
 }
 
-interface BundleInstallFailure {
+interface SourceInstallFailure {
   message: string;
   error: unknown;
 }
 
-const aggregateFailureSuggestion = "Review the bundle failure output above and re-run after fixing the reported sources";
+const aggregateFailureSuggestion = "Review the source failure output above and re-run after fixing the reported sources";
+
+interface GroupedLockfileSource {
+  source: string;
+  names: string[];
+}
 
 function isMissingFileError(error: unknown): boolean {
   return error instanceof FilesystemError && Boolean(error.cause && typeof error.cause === "object" && "code" in error.cause && error.cause.code === "ENOENT");
 }
 
-function resolveAggregateExitCode(failures: BundleInstallFailure[]): ExitCode {
+function resolveAggregateExitCode(failures: SourceInstallFailure[]): ExitCode {
   if (failures.length === 0) {
     return ExitCode.OK;
   }
@@ -63,6 +68,29 @@ async function normalizeInstallSource(source: string, cwd: string, homeDir: stri
   return descriptor.kind === "local" ? descriptor.path : source;
 }
 
+function groupLockfileSources(lockfile: { skills: Array<{ source: string; name: string }> }): GroupedLockfileSource[] {
+  const groups = new Map<string, string[]>();
+
+  for (const skill of lockfile.skills) {
+    const current = groups.get(skill.source) ?? [];
+    if (current.includes("*")) {
+      continue;
+    }
+
+    if (skill.name === "*") {
+      groups.set(skill.source, ["*"]);
+      continue;
+    }
+
+    if (!current.includes(skill.name)) {
+      current.push(skill.name);
+    }
+    groups.set(skill.source, current);
+  }
+
+  return Array.from(groups.entries()).map(([source, names]) => ({ source, names }));
+}
+
 export async function runInstallFromLockfileCommand(
   args: InstallFromLockfileCommandArgs,
   runtime: InstallRuntimeOptions = {},
@@ -85,24 +113,26 @@ export async function runInstallFromLockfileCommand(
     throw error;
   });
 
-  if (lockfile.bundles.length === 0) {
+  if (lockfile.skills.length === 0) {
     throw new SkillCliError(
-      `Lockfile has no bundle sources: ${lockfilePath}`,
+      `Lockfile has no skill entries: ${lockfilePath}`,
       ExitCode.USER_INPUT,
-      "Add bundle sources to skills-lock.yaml or regenerate it with 'skill lock'",
+      "Add skill entries to skills-lock.yaml or regenerate it with 'skill lock'",
     );
   }
 
-  const failures: BundleInstallFailure[] = [];
+  const failures: SourceInstallFailure[] = [];
+  const groupedSources = groupLockfileSources(lockfile);
 
-  for (const bundle of lockfile.bundles) {
+  for (const group of groupedSources) {
     try {
       await runInstallCommand(
         {
-          source: await normalizeInstallSource(bundle.source, lockfileRoot, homeDir),
+          source: await normalizeInstallSource(group.source, lockfileRoot, homeDir),
           tool: args.tool,
           target: args.target,
           force: args.force,
+          skills: group.names,
         },
         {
           ...runtime,
@@ -112,7 +142,7 @@ export async function runInstallFromLockfileCommand(
       );
     } catch (error) {
       failures.push({
-        message: `${bundle.source}: ${error instanceof Error ? error.message : "Unknown error"}`,
+        message: `${group.source}: ${error instanceof Error ? error.message : "Unknown error"}`,
         error,
       });
     }
@@ -124,7 +154,7 @@ export async function runInstallFromLockfileCommand(
     }
 
     throw new SkillCliError(
-      `Failed to install ${failures.length} bundle(s) from skills-lock.yaml`,
+      `Failed to install ${failures.length} source(s) from skills-lock.yaml`,
       resolveAggregateExitCode(failures),
       aggregateFailureSuggestion,
     );
@@ -132,6 +162,6 @@ export async function runInstallFromLockfileCommand(
 
   return {
     lockfilePath,
-    installedSources: lockfile.bundles.map((bundle) => bundle.source),
+    installedSources: groupedSources.map((group) => group.source),
   };
 }

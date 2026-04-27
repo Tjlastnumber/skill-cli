@@ -257,6 +257,314 @@ describe("runInstallCommand", () => {
     expect(registry.bundles[0]?.bundleName).toBe("skills-source");
   });
 
+  it("accumulates managed installs across repeated skill selections", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-install-selective-"));
+    cleanupDirs.push(base);
+
+    const homeDir = join(base, "home");
+    const cwd = join(base, "workspace");
+    const sourceRoot = join(cwd, "skills-source");
+    const targetDir = join(base, "tool-target", "codex-global");
+    const storeDir = join(base, "skill-store");
+
+    await mkdir(join(homeDir, ".config", "skill-cli"), { recursive: true });
+    await mkdir(join(sourceRoot, "alpha-skill"), { recursive: true });
+    await mkdir(join(sourceRoot, "beta-skill"), { recursive: true });
+    await writeFile(join(sourceRoot, "alpha-skill", "SKILL.md"), "# alpha\n");
+    await writeFile(join(sourceRoot, "beta-skill", "SKILL.md"), "# beta\n");
+
+    await writeFile(
+      join(homeDir, ".config", "skill-cli", "config.json"),
+      JSON.stringify(
+        {
+          storeDir,
+          tools: {
+            codex: {
+              globalDir: targetDir,
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    await runInstallCommand(
+      {
+        source: "skills-source",
+        tool: "codex",
+        target: { type: "global" },
+        force: false,
+      },
+      { cwd, homeDir, output: quietOutput() },
+    );
+
+    await runInstallCommand(
+      {
+        source: "skills-source",
+        tool: "codex",
+        target: { type: "global" },
+        force: false,
+        skills: ["alpha-skill"],
+      },
+      { cwd, homeDir, output: quietOutput() },
+    );
+
+    await runInstallCommand(
+      {
+        source: "skills-source",
+        tool: "codex",
+        target: { type: "global" },
+        force: false,
+        skills: ["beta-skill"],
+      },
+      { cwd, homeDir, output: quietOutput() },
+    );
+
+    expect((await lstat(join(targetDir, "alpha-skill"))).isSymbolicLink()).toBe(true);
+    expect((await lstat(join(targetDir, "beta-skill"))).isSymbolicLink()).toBe(true);
+
+    const registryRaw = await readFile(join(storeDir, "registry.json"), "utf8");
+    const registry = JSON.parse(registryRaw) as {
+      bundles: Array<{ members: Array<{ skillName: string }> }>;
+    };
+    expect(registry.bundles[0]?.members).toHaveLength(2);
+    expect(registry.bundles[0]?.members).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ skillName: "alpha-skill" }),
+        expect.objectContaining({ skillName: "beta-skill" }),
+      ]),
+    );
+  });
+
+  it("adds the remaining skills when later installing the full source", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-install-selective-expand-"));
+    cleanupDirs.push(base);
+
+    const homeDir = join(base, "home");
+    const cwd = join(base, "workspace");
+    const sourceRoot = join(cwd, "skills-source");
+    const targetDir = join(base, "tool-target", "codex-global");
+    const storeDir = join(base, "skill-store");
+
+    await mkdir(join(homeDir, ".config", "skill-cli"), { recursive: true });
+    await mkdir(join(sourceRoot, "alpha-skill"), { recursive: true });
+    await mkdir(join(sourceRoot, "beta-skill"), { recursive: true });
+    await writeFile(join(sourceRoot, "alpha-skill", "SKILL.md"), "# alpha\n");
+    await writeFile(join(sourceRoot, "beta-skill", "SKILL.md"), "# beta\n");
+
+    await writeFile(
+      join(homeDir, ".config", "skill-cli", "config.json"),
+      JSON.stringify(
+        {
+          storeDir,
+          tools: {
+            codex: {
+              globalDir: targetDir,
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    await runInstallCommand(
+      {
+        source: "skills-source",
+        tool: "codex",
+        target: { type: "global" },
+        force: false,
+        skills: ["alpha-skill"],
+      },
+      { cwd, homeDir, output: quietOutput() },
+    );
+
+    await runInstallCommand(
+      {
+        source: "skills-source",
+        tool: "codex",
+        target: { type: "global" },
+        force: false,
+      },
+      { cwd, homeDir, output: quietOutput() },
+    );
+
+    expect((await lstat(join(targetDir, "alpha-skill"))).isSymbolicLink()).toBe(true);
+    expect((await lstat(join(targetDir, "beta-skill"))).isSymbolicLink()).toBe(true);
+
+    const registryRaw = await readFile(join(storeDir, "registry.json"), "utf8");
+    const registry = JSON.parse(registryRaw) as {
+      bundles: Array<{ members: Array<{ skillName: string }> }>;
+    };
+    expect(registry.bundles[0]?.members).toHaveLength(2);
+  });
+
+  it("retains surviving managed links when only part of a prior full install remains", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-install-partial-survivor-"));
+    cleanupDirs.push(base);
+
+    const homeDir = join(base, "home");
+    const cwd = join(base, "workspace");
+    const sourceRoot = join(cwd, "skills-source");
+    const targetDir = join(base, "tool-target", "codex-global");
+    const storeDir = join(base, "skill-store");
+
+    await mkdir(join(homeDir, ".config", "skill-cli"), { recursive: true });
+    await mkdir(join(sourceRoot, "alpha-skill"), { recursive: true });
+    await mkdir(join(sourceRoot, "beta-skill"), { recursive: true });
+    await writeFile(join(sourceRoot, "alpha-skill", "SKILL.md"), "# alpha\n");
+    await writeFile(join(sourceRoot, "beta-skill", "SKILL.md"), "# beta\n");
+
+    await writeFile(
+      join(homeDir, ".config", "skill-cli", "config.json"),
+      JSON.stringify(
+        {
+          storeDir,
+          tools: {
+            codex: {
+              globalDir: targetDir,
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    await runInstallCommand(
+      {
+        source: "skills-source",
+        tool: "codex",
+        target: { type: "global" },
+        force: false,
+      },
+      { cwd, homeDir, output: quietOutput() },
+    );
+
+    await rm(join(targetDir, "beta-skill"), { recursive: true, force: true });
+
+    await runInstallCommand(
+      {
+        source: "skills-source",
+        tool: "codex",
+        target: { type: "global" },
+        force: false,
+        skills: ["beta-skill"],
+      },
+      { cwd, homeDir, output: quietOutput() },
+    );
+
+    expect((await lstat(join(targetDir, "alpha-skill"))).isSymbolicLink()).toBe(true);
+    expect((await lstat(join(targetDir, "beta-skill"))).isSymbolicLink()).toBe(true);
+
+    const registryRaw = await readFile(join(storeDir, "registry.json"), "utf8");
+    const registry = JSON.parse(registryRaw) as {
+      bundles: Array<{ members: Array<{ skillName: string }> }>;
+    };
+    expect(registry.bundles[0]?.members).toHaveLength(2);
+    expect(registry.bundles[0]?.members).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ skillName: "alpha-skill" }),
+        expect.objectContaining({ skillName: "beta-skill" }),
+      ]),
+    );
+  });
+
+  it("does not restore previously full-installed project skills after the project links were deleted", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-install-project-reseed-"));
+    cleanupDirs.push(base);
+
+    const homeDir = join(base, "home");
+    const cwd = join(base, "workspace");
+    const sourceRoot = join(cwd, "skills-source");
+    const storeDir = join(base, "skill-store");
+
+    await mkdir(join(homeDir, ".config", "skill-cli"), { recursive: true });
+    await mkdir(join(sourceRoot, "alpha-skill"), { recursive: true });
+    await mkdir(join(sourceRoot, "beta-skill"), { recursive: true });
+    await writeFile(join(sourceRoot, "alpha-skill", "SKILL.md"), "# alpha\n");
+    await writeFile(join(sourceRoot, "beta-skill", "SKILL.md"), "# beta\n");
+    await writeFile(join(homeDir, ".config", "skill-cli", "config.json"), JSON.stringify({ storeDir }, null, 2));
+
+    await runInstallCommand(
+      {
+        source: "skills-source",
+        tool: "opencode",
+        target: { type: "project" },
+        force: false,
+        skills: ["*"],
+      },
+      { cwd, homeDir, output: quietOutput() },
+    );
+
+    await rm(join(cwd, ".opencode", "skills"), { recursive: true, force: true });
+    await rm(join(cwd, "skills-lock.yaml"), { recursive: true, force: true });
+
+    await runInstallCommand(
+      {
+        source: "skills-source",
+        tool: "opencode",
+        target: { type: "project" },
+        force: false,
+        skills: ["alpha-skill"],
+      },
+      { cwd, homeDir, output: quietOutput() },
+    );
+
+    expect((await lstat(join(cwd, ".opencode", "skills", "alpha-skill"))).isSymbolicLink()).toBe(true);
+    await expect(lstat(join(cwd, ".opencode", "skills", "beta-skill"))).rejects.toThrow();
+
+    const registryRaw = await readFile(join(storeDir, "registry.json"), "utf8");
+    const registry = JSON.parse(registryRaw) as {
+      bundles: Array<{ members: Array<{ skillName: string }> }>;
+    };
+    expect(registry.bundles[0]?.members).toHaveLength(1);
+    expect(registry.bundles[0]?.members[0]).toMatchObject({ skillName: "alpha-skill" });
+  });
+
+  it("fails when a requested skill name is not found", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-install-missing-selection-"));
+    cleanupDirs.push(base);
+
+    const homeDir = join(base, "home");
+    const cwd = join(base, "workspace");
+    const sourceRoot = join(cwd, "skills-source");
+
+    await mkdir(join(homeDir, ".config", "skill-cli"), { recursive: true });
+    await mkdir(join(sourceRoot, "alpha-skill"), { recursive: true });
+    await writeFile(join(sourceRoot, "alpha-skill", "SKILL.md"), "# alpha\n");
+
+    await writeFile(
+      join(homeDir, ".config", "skill-cli", "config.json"),
+      JSON.stringify(
+        {
+          storeDir: join(base, "skill-store"),
+          tools: {
+            codex: {
+              globalDir: join(base, "tool-target", "codex-global"),
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    await expect(
+      runInstallCommand(
+        {
+          source: "skills-source",
+          tool: "codex",
+          target: { type: "global" },
+          force: false,
+          skills: ["beta-skill"],
+        },
+        { cwd, homeDir, output: quietOutput() },
+      ),
+    ).rejects.toThrow(/beta-skill/);
+  });
+
   it("rolls back earlier links when a later member install fails", async () => {
     const base = await mkdtemp(join(tmpdir(), "skill-cli-install-rollback-"));
     cleanupDirs.push(base);
@@ -366,6 +674,76 @@ describe("runInstallCommand", () => {
 
     expect((await lstat(linkPath)).isDirectory()).toBe(true);
     expect(await readFile(join(linkPath, "USER.txt"), "utf8")).toContain("keep me");
+  });
+
+  it("fails conservatively when selective cleanup would touch user content from a stale managed member", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-install-stale-user-content-"));
+    cleanupDirs.push(base);
+
+    const homeDir = join(base, "home");
+    const cwd = join(base, "workspace");
+    const sourceRoot = join(cwd, "skills-source");
+    const targetDir = join(base, "tool-target", "codex-global");
+    const storeDir = join(base, "skill-store");
+
+    await mkdir(join(homeDir, ".config", "skill-cli"), { recursive: true });
+    await mkdir(join(sourceRoot, "alpha-skill"), { recursive: true });
+    await mkdir(join(sourceRoot, "beta-skill"), { recursive: true });
+    await writeFile(join(sourceRoot, "alpha-skill", "SKILL.md"), "# alpha\n");
+    await writeFile(join(sourceRoot, "beta-skill", "SKILL.md"), "# beta\n");
+
+    await writeFile(
+      join(homeDir, ".config", "skill-cli", "config.json"),
+      JSON.stringify(
+        {
+          storeDir,
+          tools: {
+            codex: {
+              globalDir: targetDir,
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    await runInstallCommand(
+      {
+        source: "skills-source",
+        tool: "codex",
+        target: { type: "global" },
+        force: false,
+      },
+      { cwd, homeDir, output: quietOutput() },
+    );
+
+    const stalePath = join(targetDir, "beta-skill");
+    await rm(stalePath, { recursive: true, force: true });
+    await mkdir(stalePath, { recursive: true });
+    await writeFile(join(stalePath, "USER.txt"), "keep me\n");
+
+    await expect(
+      runInstallCommand(
+        {
+          source: "skills-source",
+          tool: "codex",
+          target: { type: "global" },
+          force: false,
+          skills: ["alpha-skill"],
+        },
+        { cwd, homeDir, output: quietOutput() },
+      ),
+    ).rejects.toThrow(/already exists/);
+
+    expect((await lstat(stalePath)).isDirectory()).toBe(true);
+    expect(await readFile(join(stalePath, "USER.txt"), "utf8")).toContain("keep me");
+
+    const registryRaw = await readFile(join(storeDir, "registry.json"), "utf8");
+    const registry = JSON.parse(registryRaw) as {
+      bundles: Array<{ members: Array<{ skillName: string }> }>;
+    };
+    expect(registry.bundles[0]?.members).toHaveLength(2);
   });
 
   it("refreshes installs after migrating a legacy registry entry without sourceSkillDir", async () => {
@@ -637,5 +1015,72 @@ describe("runInstallCommand", () => {
     expect(new Set(registry.bundles.map((bundle) => bundle.storedSourceDir))).toEqual(
       new Set([first.storedSourceDir]),
     );
+  });
+
+  it("uses the bundle name for a root git SKILL.md member", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-install-git-root-"));
+    cleanupDirs.push(base);
+
+    const homeDir = join(base, "home");
+    const cwd = join(base, "workspace", "repo");
+    const storeDir = join(base, "skill-store");
+    const resolvedCommitSha = "abcdef0123456789abcdef0123456789abcdef01";
+
+    await mkdir(join(homeDir, ".config", "skill-cli"), { recursive: true });
+    await mkdir(join(cwd, ".git"), { recursive: true });
+    await writeFile(
+      join(homeDir, ".config", "skill-cli", "config.json"),
+      JSON.stringify({ storeDir }, null, 2),
+    );
+
+    const runner = async (
+      command: string,
+      args: string[],
+    ): Promise<{ stdout: string; stderr: string; exitCode: number }> => {
+      if (command === "git" && args[0] === "ls-remote") {
+        return {
+          stdout: `ref: refs/heads/main\tHEAD\n${resolvedCommitSha}\tHEAD\n`,
+          stderr: "",
+          exitCode: 0,
+        };
+      }
+
+      if (command === "git" && args[0] === "clone") {
+        const targetDir = args[args.length - 1];
+        if (targetDir) {
+          await mkdir(join(targetDir, ".git"), { recursive: true });
+          await writeFile(join(targetDir, "SKILL.md"), "# Root Skill\n");
+        }
+
+        return { stdout: "", stderr: "", exitCode: 0 };
+      }
+
+      if (command === "git" && args[0] === "rev-parse") {
+        return {
+          stdout: `${resolvedCommitSha}\n`,
+          stderr: "",
+          exitCode: 0,
+        };
+      }
+
+      throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
+    };
+
+    await runInstallCommand(
+      {
+        source: "git@github.com:acme/skills.git",
+        tool: "opencode",
+        target: { type: "project" },
+        force: false,
+      },
+      {
+        cwd,
+        homeDir,
+        output: quietOutput(),
+        runCommand: runner,
+      },
+    );
+
+    expect((await lstat(join(cwd, ".opencode", "skills", "skills"))).isSymbolicLink()).toBe(true);
   });
 });

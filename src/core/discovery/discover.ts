@@ -6,6 +6,7 @@ import { ConfigError, SourceError } from "../errors.js";
 export interface DiscoveredSkill {
   skillName: string;
   entryPath: string;
+  relativeEntryPath: string;
   skillDir: string;
   relativeSkillDir: string;
 }
@@ -54,8 +55,18 @@ function extractFilenameFromPattern(pattern: string): string {
   throw new ConfigError(`Unsupported entryPattern: ${pattern}`);
 }
 
-function deriveSkillName(skillDir: string, strategy: string): string {
+function deriveSkillName(options: {
+  sourceDir: string;
+  skillDir: string;
+  strategy: string;
+  rootSkillName?: string;
+}): string {
+  const { sourceDir, skillDir, strategy, rootSkillName } = options;
+
   if (strategy === "parentDir") {
+    if (skillDir === sourceDir && rootSkillName) {
+      return rootSkillName;
+    }
     return basename(skillDir);
   }
 
@@ -66,8 +77,9 @@ export async function discoverSkills(options: {
   sourceDir: string;
   entryPattern: string;
   nameStrategy: string;
+  rootSkillName?: string;
 }): Promise<DiscoveredSkill[]> {
-  const { sourceDir, entryPattern, nameStrategy } = options;
+  const { sourceDir, entryPattern, nameStrategy, rootSkillName } = options;
   const sourceStats = await stat(sourceDir).catch(() => {
     throw new SourceError(`Source directory does not exist: ${sourceDir}`);
   });
@@ -83,11 +95,17 @@ export async function discoverSkills(options: {
 
   return matches.map((entryPath) => {
     const skillDir = dirname(entryPath);
-    const skillName = deriveSkillName(skillDir, nameStrategy);
+    const skillName = deriveSkillName({
+      sourceDir,
+      skillDir,
+      strategy: nameStrategy,
+      rootSkillName,
+    });
 
     return {
       skillName,
       entryPath,
+      relativeEntryPath: relative(sourceDir, entryPath).replace(/\\/g, "/"),
       skillDir,
       relativeSkillDir: relative(sourceDir, skillDir),
     };

@@ -68,11 +68,20 @@ export async function runCli(argv: string[] = process.argv): Promise<void> {
     .command("install")
     .argument("[source]", "Source path, git URL, or package name")
     .option("--tool <tool>", "Target tool id or 'all'")
+    .option("--skill <name>", "Install only the named skill (repeatable or '*' for all)", collectRepeatedOption, [])
     .option("--global", "Install into tool global directory")
     .option("--project", "Install into tool project directory")
     .option("--dir <path>", "Install into custom directory")
     .option("--force", "Replace existing target entries")
-    .action(async (source: string | undefined, options: TargetOptions & { tool?: string; force?: boolean }) => {
+    .action(async (source: string | undefined, options: TargetOptions & { tool?: string; force?: boolean; skill?: string[] }) => {
+      if (!source && (options.skill?.length ?? 0) > 0) {
+        throw new SkillCliError(
+          "The --skill option requires a source passed to 'skill install <source>'",
+          ExitCode.USER_INPUT,
+          "Pass a source to 'skill install <source>' or remove --skill",
+        );
+      }
+
       const config = await loadConfig();
       const resolved = await resolveInstallInputs({
         tool: options.tool,
@@ -93,6 +102,7 @@ export async function runCli(argv: string[] = process.argv): Promise<void> {
           tool: resolved.tool,
           force: Boolean(options.force),
           target: resolved.target,
+          ...(options.skill && options.skill.length > 0 ? { skills: options.skill } : {}),
         });
         return;
       }
@@ -199,6 +209,10 @@ export async function runCli(argv: string[] = process.argv): Promise<void> {
     output.error(error instanceof Error ? error.message : "Unexpected error");
     process.exitCode = ExitCode.INTERNAL;
   }
+}
+
+function collectRepeatedOption(value: string, previous: string[]): string[] {
+  return [...previous, value];
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

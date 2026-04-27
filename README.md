@@ -20,8 +20,9 @@ Different coding CLIs use different skill directories. Managing the same skill s
 ## Features
 
 - Install skills from `git`, `npm`, or local paths
-- Generate `skills-lock.yaml` from managed project installs with `skill lock`
-- Install all bundle sources from `skills-lock.yaml` with `skill install`
+- Install specific skills by name with `skill install --skill <name>` or `--skill '*'`
+- Generate skill-level `skills-lock.yaml` v2 from managed project installs with `skill lock`
+- Install all locked sources from `skills-lock.yaml` with `skill install`
 - Search repository-root and nested skills from public GitHub repositories without cloning
 - Manage skills for `claude-code`, `codex`, and `opencode`
 - Install targets: `--global`, `--project`, and `--dir <path>`
@@ -52,6 +53,15 @@ Install a bundle into your current project for OpenCode:
 ```bash
 skill install git@github.com:obra/superpowers.git --tool opencode --project
 ```
+
+Install only one discovered skill by name (`'*'` means all skills and should be quoted in shells):
+
+```bash
+skill install git@github.com:obra/superpowers.git --tool opencode --project --skill using-superpowers
+skill install git@github.com:obra/superpowers.git --tool opencode --project --skill '*'
+```
+
+Repeated installs from the same `source` accumulate named skills for the same tool + target instead of replacing earlier selections.
 
 Generate a project lockfile from the currently installed managed project bundles:
 
@@ -102,8 +112,8 @@ skill doctor --tool opencode --repair-registry
 | Command | Description |
 | --- | --- |
 | `skill search <github-repo-url> [--filter <text>]` | Search a public GitHub repository default branch for a repository-root `SKILL.md` and nested skill files without cloning; `--filter` does a case-insensitive substring match against skill name, description, and path |
-| `skill install [source] [--tool <tool-or-all>] [one target: --global / --project / --dir <path>]` | Install one bundle from git/npm/local source, or install all bundle sources from `skills-lock.yaml` when `source` is omitted |
-| `skill lock [--tool <tool-or-all>] [--output <path>] [--force]` | Generate `skills-lock.yaml` from currently installed managed project bundles |
+| `skill install [source] [--skill <name>]... [--tool <tool-or-all>] [one target: --global / --project / --dir <path>]` | Install one source from git/npm/local input, optionally restricting the install to specific skill names; when `source` is omitted, install all locked source groups from `skills-lock.yaml` |
+| `skill lock [--tool <tool-or-all>] [--output <path>] [--force]` | Generate skill-level `skills-lock.yaml` v2 entries from currently installed managed project skills |
 | `skill list [--tool <tool-or-all>] [--status <all,managed,discovered>] [--expand]` | List bundles and optionally expand member skills |
 | `skill remove <bundle-name> --tool <tool-or-all> (one target: --global / --project / --dir <path>)` | Remove an installed bundle |
 | `skill register [--tool <tool-or-all>]` | Backfill registry from discovered installs |
@@ -117,27 +127,33 @@ In non-interactive environments, missing required install inputs do not trigger 
 
 ## Lockfiles
 
-`skill lock` writes `skills-lock.yaml` at the project root by default. It only emits sources from bundles that are:
+`skill lock` writes `skills-lock.yaml` at the project root by default. It only emits skill entries from installs that are:
 
 - installed in the current project's `project` targets
 - managed by the registry
 - still present and healthy in the current project scan
 
-`skill install` with no `source` argument reads `skills-lock.yaml` from the project root and installs each listed bundle source sequentially.
+`skill install` with no `source` argument reads `skills-lock.yaml` from the project root, groups entries by `source`, and installs each source sequentially.
+
+Lockfile v1 is no longer supported. Regenerate older files with `skill lock --force`.
 
 Generated lockfiles use this shape:
 
 ```yaml
-version: 1
-bundles:
+version: 2
+skills:
   - source: git@github.com:obra/superpowers.git#0123456789abcdef0123456789abcdef01234567
+    name: "*"
   - source: "@acme/skills@1.2.3"
+    name: browser
   - source: ./skills/local-bundle
+    name: debugger
 ```
 
 Notes:
 
-- generated local bundle sources must live inside the project root so they can be written as project-relative paths
+- `name: "*"` means "install every discovered skill from this source"
+- generated local sources must live inside the project root so they can be written as project-relative paths
 - relative sources in `skills-lock.yaml` are resolved from the project root, not the nested shell cwd
 
 ## How it works

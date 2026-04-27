@@ -23,19 +23,22 @@ describe("lockfile load/write", () => {
 
     const filePath = join(base, "skills-lock.yaml");
     const lockfile = {
-      version: 1 as const,
-      bundles: [{ source: "npm:@scope/skills" }, { source: "./skills/local-bundle" }],
+      version: 2 as const,
+      skills: [
+        { source: "npm:@scope/skills", name: "*" },
+        { source: "./skills/local-bundle", name: "browser" },
+      ],
     };
 
     await writeSkillsLockfile(filePath, lockfile);
 
     const raw = await readFile(filePath, "utf8");
-    expect(raw).toBe(
-      "version: 1\n" +
-        "bundles:\n" +
-        "  - source: npm:@scope/skills\n" +
-        "  - source: ./skills/local-bundle\n",
-    );
+    expect(raw).toContain("version: 2\n");
+    expect(raw).toContain("skills:\n");
+    expect(raw).toContain("source: npm:@scope/skills\n");
+    expect(raw).toMatch(/name: ['\"]\*['\"]/);
+    expect(raw).toContain("source: ./skills/local-bundle\n");
+    expect(raw).toContain("name: browser\n");
 
     await expect(loadSkillsLockfile(filePath)).resolves.toEqual(lockfile);
   });
@@ -58,9 +61,24 @@ describe("lockfile load/write", () => {
     await mkdir(dir, { recursive: true });
 
     const filePath = join(dir, "skills-lock.yaml");
-    await writeFile(filePath, "version: 2\nbundles:\n  - source: \"\"\n", "utf8");
+    await writeFile(filePath, "version: 2\nskills:\n  - source: \"\"\n    name: \"\"\n", "utf8");
 
     await expect(loadSkillsLockfile(filePath)).rejects.toThrow(/Invalid skills lockfile/);
+  });
+
+  it("rejects version 1 lockfiles with a regeneration hint", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-lockfile-v1-"));
+    cleanupDirs.push(base);
+
+    const filePath = join(base, "skills-lock.yaml");
+    await writeFile(filePath, "version: 1\nbundles:\n  - source: ./skills/local-bundle\n", "utf8");
+
+    await expect(loadSkillsLockfile(filePath)).rejects.toMatchObject({
+      name: "ConfigError",
+      exitCode: ExitCode.CONFIG,
+      message: expect.stringMatching(/version 2/),
+      suggestion: "Run 'skill lock --force' to regenerate skills-lock.yaml in v2 format",
+    });
   });
 
   it("throws a stable CLI error for invalid lockfile data when writing", async () => {
@@ -72,7 +90,7 @@ describe("lockfile load/write", () => {
     await expect(
       writeSkillsLockfile(filePath, {
         version: 2,
-        bundles: [{ source: "" }],
+        skills: [{ source: "", name: "" }],
       } as never),
     ).rejects.toMatchObject({
       name: "ConfigError",

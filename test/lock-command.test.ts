@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { runInstallCommand } from "../src/commands/install.js";
 import { runLockCommand } from "../src/commands/lock.js";
 import { ExitCode } from "../src/core/errors.js";
+import { loadSkillsLockfile } from "../src/core/lockfile/load.js";
 
 const cleanupDirs: string[] = [];
 
@@ -51,7 +52,7 @@ async function writeConfig(options: { homeDir: string; storeDir: string; project
 }
 
 describe("runLockCommand", () => {
-  it("creates skills-lock.yaml from managed project bundles", async () => {
+  it("creates a version 2 skills-lock.yaml from managed project installs", async () => {
     const base = await mkdtemp(join(tmpdir(), "skill-cli-lock-command-project-"));
     cleanupDirs.push(base);
 
@@ -80,9 +81,10 @@ describe("runLockCommand", () => {
     const capture = captureOutput();
     await runLockCommand({ tool: "all", force: false }, { cwd, homeDir, output: capture.output });
 
-    await expect(readFile(join(projectRoot, "skills-lock.yaml"), "utf8")).resolves.toBe(
-      "version: 1\n" + "bundles:\n" + "  - source: ./skills-source\n",
-    );
+    await expect(loadSkillsLockfile(join(projectRoot, "skills-lock.yaml"))).resolves.toEqual({
+      version: 2,
+      skills: [{ source: "./skills-source", name: "*" }],
+    });
     expect(capture.logs.some((line) => line.includes("skills-lock.yaml"))).toBe(true);
   });
 
@@ -142,6 +144,163 @@ describe("runLockCommand", () => {
     });
   });
 
+  it("writes explicit skill names when a managed install only includes part of a source", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-lock-command-partial-selection-"));
+    cleanupDirs.push(base);
+
+    const homeDir = join(base, "home");
+    const projectRoot = join(base, "repo");
+    const cwd = projectRoot;
+    const sourceRoot = join(projectRoot, "skills-source");
+    const storeDir = join(base, "store");
+    const globalDir = join(base, "global-skills");
+
+    await mkdir(join(projectRoot, ".git"), { recursive: true });
+    await mkdir(join(sourceRoot, "alpha-skill"), { recursive: true });
+    await mkdir(join(sourceRoot, "beta-skill"), { recursive: true });
+    await writeFile(join(sourceRoot, "alpha-skill", "SKILL.md"), "# alpha\n");
+    await writeFile(join(sourceRoot, "beta-skill", "SKILL.md"), "# beta\n");
+    await writeConfig({ homeDir, storeDir, projectDir: ".opencode/skills", globalDir });
+
+    await runInstallCommand(
+      {
+        source: "./skills-source",
+        tool: "opencode",
+        target: { type: "project" },
+        force: false,
+        skills: ["alpha-skill"],
+      },
+      { cwd, homeDir, output: captureOutput().output },
+    );
+
+    await runLockCommand({ tool: "all", force: false }, { cwd, homeDir, output: captureOutput().output });
+
+    await expect(loadSkillsLockfile(join(projectRoot, "skills-lock.yaml"))).resolves.toEqual({
+      version: 2,
+      skills: [{ source: "./skills-source", name: "alpha-skill" }],
+    });
+  });
+
+  it("collapses repeated installs from the same source to '*' once all skills are installed", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-lock-command-merged-selection-"));
+    cleanupDirs.push(base);
+
+    const homeDir = join(base, "home");
+    const projectRoot = join(base, "repo");
+    const cwd = projectRoot;
+    const sourceRoot = join(projectRoot, "skills-source");
+    const storeDir = join(base, "store");
+    const globalDir = join(base, "global-skills");
+
+    await mkdir(join(projectRoot, ".git"), { recursive: true });
+    await mkdir(join(sourceRoot, "alpha-skill"), { recursive: true });
+    await mkdir(join(sourceRoot, "beta-skill"), { recursive: true });
+    await writeFile(join(sourceRoot, "alpha-skill", "SKILL.md"), "# alpha\n");
+    await writeFile(join(sourceRoot, "beta-skill", "SKILL.md"), "# beta\n");
+    await writeConfig({ homeDir, storeDir, projectDir: ".opencode/skills", globalDir });
+
+    await runInstallCommand(
+      {
+        source: "./skills-source",
+        tool: "opencode",
+        target: { type: "project" },
+        force: false,
+        skills: ["alpha-skill"],
+      },
+      { cwd, homeDir, output: captureOutput().output },
+    );
+
+    await runInstallCommand(
+      {
+        source: "./skills-source",
+        tool: "opencode",
+        target: { type: "project" },
+        force: false,
+        skills: ["beta-skill"],
+      },
+      { cwd, homeDir, output: captureOutput().output },
+    );
+
+    await runLockCommand({ tool: "all", force: false }, { cwd, homeDir, output: captureOutput().output });
+
+    await expect(loadSkillsLockfile(join(projectRoot, "skills-lock.yaml"))).resolves.toEqual({
+      version: 2,
+      skills: [{ source: "./skills-source", name: "*" }],
+    });
+  });
+
+  it("rejects lockfile generation when the same source has conflicting skill selections across tools", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-lock-command-conflicting-tools-"));
+    cleanupDirs.push(base);
+
+    const homeDir = join(base, "home");
+    const projectRoot = join(base, "repo");
+    const cwd = projectRoot;
+    const sourceRoot = join(projectRoot, "skills-source");
+    const storeDir = join(base, "store");
+
+    await mkdir(join(projectRoot, ".git"), { recursive: true });
+    await mkdir(join(homeDir, ".config", "skill-cli"), { recursive: true });
+    await mkdir(join(sourceRoot, "alpha-skill"), { recursive: true });
+    await mkdir(join(sourceRoot, "beta-skill"), { recursive: true });
+    await writeFile(join(sourceRoot, "alpha-skill", "SKILL.md"), "# alpha\n");
+    await writeFile(join(sourceRoot, "beta-skill", "SKILL.md"), "# beta\n");
+    await writeFile(
+      join(homeDir, ".config", "skill-cli", "config.json"),
+      JSON.stringify(
+        {
+          storeDir,
+          tools: {
+            codex: {
+              projectDir: ".codex/skills",
+              globalDir: join(base, "codex-global"),
+              entryPattern: "**/SKILL.md",
+              nameStrategy: "parentDir",
+            },
+            opencode: {
+              projectDir: ".opencode/skills",
+              globalDir: join(base, "opencode-global"),
+              entryPattern: "**/SKILL.md",
+              nameStrategy: "parentDir",
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    await runInstallCommand(
+      {
+        source: "./skills-source",
+        tool: "codex",
+        target: { type: "project" },
+        force: false,
+        skills: ["alpha-skill"],
+      },
+      { cwd, homeDir, output: captureOutput().output },
+    );
+
+    await runInstallCommand(
+      {
+        source: "./skills-source",
+        tool: "opencode",
+        target: { type: "project" },
+        force: false,
+        skills: ["beta-skill"],
+      },
+      { cwd, homeDir, output: captureOutput().output },
+    );
+
+    await expect(
+      runLockCommand({ tool: "all", force: false }, { cwd, homeDir, output: captureOutput().output }),
+    ).rejects.toMatchObject({
+      name: "SkillCliError",
+      exitCode: ExitCode.USER_INPUT,
+      message: expect.stringMatching(/conflicting skill selections/i),
+    });
+  });
+
   it("skips stale registry-only bundles that are not actually installed", async () => {
     const base = await mkdtemp(join(tmpdir(), "skill-cli-lock-command-stale-"));
     cleanupDirs.push(base);
@@ -192,9 +351,10 @@ describe("runLockCommand", () => {
 
     await runLockCommand({ tool: "all", force: true }, { cwd, homeDir, output: captureOutput().output });
 
-    await expect(readFile(join(projectRoot, "skills-lock.yaml"), "utf8")).resolves.toBe(
-      "version: 1\n" + "bundles:\n" + "  - source: ./skills-source\n",
-    );
+    await expect(loadSkillsLockfile(join(projectRoot, "skills-lock.yaml"))).resolves.toEqual({
+      version: 2,
+      skills: [{ source: "./skills-source", name: "*" }],
+    });
   });
 
   it("errors when no eligible bundles exist", async () => {

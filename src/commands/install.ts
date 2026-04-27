@@ -28,6 +28,7 @@ export interface InstallCommandArgs {
   tool: string;
   target: InstallTarget;
   force: boolean;
+  skills?: string[];
 }
 
 export interface InstallRuntimeOptions {
@@ -74,6 +75,93 @@ function createToolFailureMessage(toolName: string, error: unknown): string {
     return `${toolName}: ${error.message}`;
   }
   return `${toolName}: Unknown error`;
+}
+
+function normalizeRequestedSkillNames(skillNames: string[] | undefined): string[] | undefined {
+  if (!skillNames) {
+    return undefined;
+  }
+
+  const normalized = Array.from(new Set(skillNames.map((skillName) => skillName.trim()).filter(Boolean)));
+  if (normalized.length === 0 || normalized.includes("*")) {
+    return undefined;
+  }
+
+  return normalized;
+}
+
+function selectDiscoveredSkills<T extends { skillName: string }>(options: {
+  discoveredSkills: T[];
+  requestedSkillNames?: string[];
+  toolName: string;
+}): T[] {
+  const { discoveredSkills, requestedSkillNames, toolName } = options;
+  if (!requestedSkillNames) {
+    return discoveredSkills;
+  }
+
+  const discoveredNames = new Set(discoveredSkills.map((skill) => skill.skillName));
+  const missingSkillNames = requestedSkillNames.filter((skillName) => !discoveredNames.has(skillName));
+
+  if (missingSkillNames.length > 0) {
+    throw new SourceError(
+      `Requested skill names not found for tool '${toolName}': ${missingSkillNames.join(", ")}`,
+      "List available skill names from the source and retry with an exact name",
+    );
+  }
+
+  const requestedNames = new Set(requestedSkillNames);
+  return discoveredSkills.filter((skill) => requestedNames.has(skill.skillName));
+}
+
+function mergeManagedSkills<T extends { skillName: string }>(options: {
+  discoveredSkills: T[];
+  selectedSkills: T[];
+  installedManagedSkillNames: Iterable<string>;
+  requestedSkillNames?: string[];
+}): T[] {
+  const { discoveredSkills, selectedSkills, installedManagedSkillNames, requestedSkillNames } = options;
+  if (!requestedSkillNames) {
+    return selectedSkills;
+  }
+
+  const desiredSkillNames = new Set(selectedSkills.map((skill) => skill.skillName));
+  const discoveredNames = new Set(discoveredSkills.map((skill) => skill.skillName));
+
+  for (const skillName of installedManagedSkillNames) {
+    if (discoveredNames.has(skillName)) {
+      desiredSkillNames.add(skillName);
+    }
+  }
+
+  return discoveredSkills.filter((skill) => desiredSkillNames.has(skill.skillName));
+}
+
+async function resolveInstalledManagedSkillNames(options: {
+  existingManagedMembers: Array<{ skillName: string; linkPath: string; sourceSkillDir?: string }>;
+  storedSourceDir: string;
+  targetRoot: string;
+}): Promise<Set<string>> {
+  const retainedSkillNames = new Set<string>();
+
+  for (const member of options.existingManagedMembers) {
+    const targetLinkPath = member.linkPath || resolveLinkPath(options.targetRoot, member.skillName);
+    if (!(await pathExists(targetLinkPath))) {
+      continue;
+    }
+
+    for (const candidate of resolveManagedSourceCandidates({
+      storedSourceDir: options.storedSourceDir,
+      member,
+    })) {
+      if (await isSameSkillDirectoryLink(targetLinkPath, candidate)) {
+        retainedSkillNames.add(member.skillName);
+        break;
+      }
+    }
+  }
+
+  return retainedSkillNames;
 }
 
 function logicalBundleKey(parts: {
@@ -250,6 +338,7 @@ export async function runInstallCommand(
 
   const config = await loadConfig({ cwd, homeDir, env });
   const selectedTools = selectTools(args.tool, Object.keys(config.tools));
+  const requestedSkillNames = normalizeRequestedSkillNames(args.skills);
 
   const sourceDescriptor = await parseSource(args.source, {
     cwd,
@@ -306,6 +395,7 @@ export async function runInstallCommand(
           sourceDir: persisted.storedSourceDir,
           entryPattern: toolConfig.entryPattern,
           nameStrategy: toolConfig.nameStrategy,
+          rootSkillName: bundleIdentity.bundleName,
         });
 
         if (discoveredSkills.length === 0) {
@@ -314,11 +404,11 @@ export async function runInstallCommand(
           );
         }
 
-        const skillNames = discoveredSkills.map((skill) => skill.skillName);
-        ensureUniqueSkillNames(skillNames, toolName);
-
-        installedByTool[toolName] = [];
-        const members: Array<{ skillName: string; linkPath: string; sourceSkillDir: string }> = [];
+        const selectedSkills = selectDiscoveredSkills({
+          discoveredSkills,
+          requestedSkillNames,
+          toolName,
+        });
         const currentBundleKey = logicalBundleKey({
           tool: toolName,
           targetType: args.target.type,
@@ -345,8 +435,24 @@ export async function runInstallCommand(
             member,
           ]),
         );
+        const installedManagedSkillNames = await resolveInstalledManagedSkillNames({
+          existingManagedMembers: existingManagedBundle?.members ?? [],
+          storedSourceDir: existingManagedBundle?.storedSourceDir ?? "unknown",
+          targetRoot,
+        });
+        const desiredSkills = mergeManagedSkills({
+          discoveredSkills,
+          selectedSkills,
+          installedManagedSkillNames,
+          requestedSkillNames,
+        });
+        const skillNames = desiredSkills.map((skill) => skill.skillName);
+        ensureUniqueSkillNames(skillNames, toolName);
+
+        installedByTool[toolName] = [];
+        const members: Array<{ skillName: string; linkPath: string; sourceSkillDir: string }> = [];
         const mutations: LinkMutation[] = [];
-        const currentSkillNames = new Set(discoveredSkills.map((skill) => skill.skillName));
+        const currentSkillNames = new Set(desiredSkills.map((skill) => skill.skillName));
         const removedManagedMembers = (existingManagedBundle?.members ?? []).filter(
           (member) => !currentSkillNames.has(member.skillName),
         );
@@ -371,7 +477,7 @@ export async function runInstallCommand(
           }
         }
 
-        for (const skill of discoveredSkills) {
+        for (const skill of desiredSkills) {
           const linkPath = resolveLinkPath(targetRoot, skill.skillName);
           const existingManagedMember = managedMembers.get(`${skill.skillName}::${linkPath}`);
           let allowManagedRefresh = false;

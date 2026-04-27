@@ -1,15 +1,16 @@
 import { z } from "zod";
 
-export const skillsLockfileBundleSchema = z
+export const skillsLockfileSkillSchema = z
   .object({
     source: z.string().min(1),
+    name: z.string().min(1),
   })
   .strict();
 
 export const skillsLockfileSchema = z
   .object({
-    version: z.literal(1),
-    bundles: z.array(skillsLockfileBundleSchema),
+    version: z.literal(2),
+    skills: z.array(skillsLockfileSkillSchema),
   })
   .strict();
 

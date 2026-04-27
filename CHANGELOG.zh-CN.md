@@ -9,6 +9,17 @@
 
 ### 新增
 
+- 新增 `skill install <source> --skill <name>`，支持重复传入 `--skill`，并支持 `--skill '*'` 安装某个 source 下发现的全部 skills。
+- 对同一个 source、同一个 tool 和 target 再次执行不同 `--skill` 选择时，保留之前已安装的命名 skill，而不是用后一次安装覆盖前一次选择。
+
+### 变更
+
+- 将 `skills-lock.yaml` 从 bundle 级 v1 结构改为 skill 级 v2 结构，并移除对 v1 的兼容；现有 lockfile 需要通过 `skill lock --force` 重新生成。
+
+### 修复
+
+- 修复以下问题：项目级 `--skill '*'` 全量安装后，如果项目内 skills links 被删除，后续再执行 `skill install --skill <name>` 时，不会再因为 registry 中残留的全量记录而把所有 skill 一起恢复。
+
 ## [0.4.0] - 2026-04-27
 
 ### 新增
