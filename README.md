@@ -15,6 +15,7 @@ Different coding CLIs use different skill directories. Managing the same skill s
 - keeping one canonical local store
 - linking skills into tool directories instead of copying files
 - tracking installs with a bundle-aware local registry
+- capturing project skill sources in `skills-lock.yaml` so the same setup can be recreated across machines
 
 ## Features
 
