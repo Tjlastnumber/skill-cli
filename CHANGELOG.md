@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+## [0.4.0] - 2026-04-27
+
+### Added
+
+- Add `skill lock` to generate `skills-lock.yaml` from managed project bundle sources.
+- Add lockfile-based `skill install` and interactive prompts for missing install scope, tool, and custom directory inputs.
+
+### Fixed
+
+- Deduplicate git bundle installs by resolved commit so the same repository revision is stored once and reused across refs.
+
 ## [0.3.1] - 2026-04-24
 
 ### Fixed
