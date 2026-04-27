@@ -4,9 +4,11 @@ import { Command, CommanderError } from "commander";
 import { pathToFileURL } from "node:url";
 
 import { runDoctorCommand } from "./commands/doctor.js";
+import { runInstallFromLockfileCommand } from "./commands/install-from-lockfile.js";
 import { runInstallCommand } from "./commands/install.js";
 import { parseExplicitInstallTargetFlags, resolveInstallInputs } from "./commands/install-inputs.js";
 import { runListCommand } from "./commands/list.js";
+import { runLockCommand } from "./commands/lock.js";
 import { runPruneCommand } from "./commands/prune.js";
 import { runRegisterCommand } from "./commands/register.js";
 import { runRelinkCommand } from "./commands/relink.js";
@@ -64,13 +66,13 @@ export async function runCli(argv: string[] = process.argv): Promise<void> {
 
   program
     .command("install")
-    .argument("<source>", "Source path, git URL, or package name")
+    .argument("[source]", "Source path, git URL, or package name")
     .option("--tool <tool>", "Target tool id or 'all'")
     .option("--global", "Install into tool global directory")
     .option("--project", "Install into tool project directory")
     .option("--dir <path>", "Install into custom directory")
     .option("--force", "Replace existing target entries")
-    .action(async (source: string, options: TargetOptions & { tool?: string; force?: boolean }) => {
+    .action(async (source: string | undefined, options: TargetOptions & { tool?: string; force?: boolean }) => {
       const config = await loadConfig();
       const resolved = await resolveInstallInputs({
         tool: options.tool,
@@ -85,8 +87,17 @@ export async function runCli(argv: string[] = process.argv): Promise<void> {
         return;
       }
 
-      await runInstallCommand({
-        source,
+      if (source) {
+        await runInstallCommand({
+          source,
+          tool: resolved.tool,
+          force: Boolean(options.force),
+          target: resolved.target,
+        });
+        return;
+      }
+
+      await runInstallFromLockfileCommand({
         tool: resolved.tool,
         force: Boolean(options.force),
         target: resolved.target,
@@ -120,6 +131,19 @@ export async function runCli(argv: string[] = process.argv): Promise<void> {
         dir: options.dir,
         expand: Boolean(options.expand),
         status: (options.status ?? "all") as "all" | "managed" | "discovered",
+      });
+    });
+
+  program
+    .command("lock")
+    .option("--tool <tool>", "Target tool id or 'all'", "all")
+    .option("--output <path>", "Write lockfile to custom path")
+    .option("--force", "Replace existing lockfile")
+    .action(async (options: { tool: string; output?: string; force?: boolean }) => {
+      await runLockCommand({
+        tool: options.tool,
+        output: options.output,
+        force: Boolean(options.force),
       });
     });
 

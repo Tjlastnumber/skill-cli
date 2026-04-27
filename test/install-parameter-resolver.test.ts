@@ -22,12 +22,28 @@ describe("parseExplicitInstallTargetFlags", () => {
     });
   });
 
+  it("treats an explicit empty custom directory as invalid user input", () => {
+    expect(() => parseExplicitInstallTargetFlags({ dir: "" })).toThrow(/custom directory path/i);
+  });
+
   it("returns undefined when no explicit target was provided", () => {
     expect(parseExplicitInstallTargetFlags({})).toBeUndefined();
   });
 
   it("throws when multiple explicit targets are provided", () => {
     expect(() => parseExplicitInstallTargetFlags({ global: true, project: true })).toThrow(
+      /Exactly one target may be specified/,
+    );
+  });
+
+  it("treats an explicitly empty dir as conflicting with --global", () => {
+    expect(() => parseExplicitInstallTargetFlags({ global: true, dir: "" })).toThrow(
+      /Exactly one target may be specified/,
+    );
+  });
+
+  it("treats an explicitly empty dir as conflicting with --project", () => {
+    expect(() => parseExplicitInstallTargetFlags({ project: true, dir: "" })).toThrow(
       /Exactly one target may be specified/,
     );
   });
@@ -54,6 +70,58 @@ describe("resolveInstallInputs", () => {
     expect(result).toEqual({
       tool: "codex",
       target: { type: "global" },
+    });
+    expect(prompt.select).not.toHaveBeenCalled();
+    expect(prompt.text).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid explicit tool before returning early", async () => {
+    const prompt = {
+      select: vi.fn(),
+      text: vi.fn(),
+      cancel: vi.fn(),
+      isCancel: vi.fn(() => false),
+    };
+
+    await expect(
+      resolveInstallInputs({
+        tool: "not-a-tool",
+        target: { type: "global" },
+        configuredTools: ["codex", "claude"],
+        stdinIsTTY: true,
+        stdoutIsTTY: true,
+        prompt,
+      }),
+    ).rejects.toMatchObject({
+      name: SkillCliError.name,
+      exitCode: ExitCode.USER_INPUT,
+      message: "Invalid tool selected",
+    });
+    expect(prompt.select).not.toHaveBeenCalled();
+    expect(prompt.text).not.toHaveBeenCalled();
+  });
+
+  it("rejects explicit install inputs when no tools are configured", async () => {
+    const prompt = {
+      select: vi.fn(),
+      text: vi.fn(),
+      cancel: vi.fn(),
+      isCancel: vi.fn(() => false),
+    };
+
+    await expect(
+      resolveInstallInputs({
+        tool: "all",
+        target: { type: "global" },
+        configuredTools: [],
+        stdinIsTTY: true,
+        stdoutIsTTY: true,
+        prompt,
+      }),
+    ).rejects.toMatchObject({
+      name: SkillCliError.name,
+      exitCode: ExitCode.USER_INPUT,
+      message: "No configured tools available for install",
     });
     expect(prompt.select).not.toHaveBeenCalled();
     expect(prompt.text).not.toHaveBeenCalled();
@@ -150,6 +218,30 @@ describe("resolveInstallInputs", () => {
       2,
       expect.objectContaining({ message: expect.stringMatching(/tool/i) }),
     );
+  });
+
+  it("rejects interactive install input resolution when no tools are configured", async () => {
+    const prompt = {
+      select: vi.fn(),
+      text: vi.fn(),
+      cancel: vi.fn(),
+      isCancel: vi.fn(() => false),
+    };
+
+    await expect(
+      resolveInstallInputs({
+        configuredTools: [],
+        stdinIsTTY: true,
+        stdoutIsTTY: true,
+        prompt,
+      }),
+    ).rejects.toMatchObject({
+      name: SkillCliError.name,
+      exitCode: ExitCode.USER_INPUT,
+      message: "No configured tools available for install",
+    });
+    expect(prompt.select).not.toHaveBeenCalled();
+    expect(prompt.text).not.toHaveBeenCalled();
   });
 
   it("throws a user input error when the selected scope is invalid", async () => {

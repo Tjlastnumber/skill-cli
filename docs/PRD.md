@@ -116,18 +116,21 @@ The CLI must install skills from a source to one or multiple tools.
 
 Command:
 
-`skill install <source> [--tool <tool|all>] [--global|--project|--dir <path>] [--force]`
+`skill install [source] [--tool <tool|all>] [--global|--project|--dir <path>] [--force]`
 
 Expected behavior:
 
-1. resolve and fetch source
-2. store content in canonical store
-3. discover skill entries using tool-specific discovery rules
-4. create symlinks in target directories
-5. record installation state in local registry
-6. in interactive terminals, prompt for missing inputs in this order: install scope, custom directory path when scope is `dir`, then tool selection
-7. tool selection must support a single configured tool id or `all`
-8. in non-interactive environments, missing required install inputs must return a user-input error instead of prompting
+1. when `source` is provided, resolve and fetch that source
+2. when `source` is omitted, load bundle sources from the project-root `skills-lock.yaml`
+3. store fetched content in canonical store
+4. discover skill entries using tool-specific discovery rules
+5. create symlinks in target directories
+6. record installation state in local registry
+7. in interactive terminals, prompt for missing inputs in this order: install scope, custom directory path when scope is `dir`, then tool selection
+8. tool selection must support a single configured tool id or `all`
+9. in non-interactive environments, missing required install inputs must return a user-input error instead of prompting
+10. lockfile-relative local sources must resolve from the project root, not a nested shell cwd
+11. batch lockfile installs may continue through per-bundle failures, but must emit an aggregated failure at the end if any bundle fails
 
 ### FR-2 Remove
 
@@ -189,6 +192,26 @@ Expected behavior:
 1. remove unreferenced store artifacts
 2. keep referenced artifacts intact
 3. print reclaimed size summary
+
+### FR-7 Lockfile
+
+Commands:
+
+`skill lock [--tool <tool|all>] [--output <path>] [--force]`
+
+Expected behavior:
+
+1. scan the current project's configured `project` targets only
+2. only include bundles that are both registry-managed and still present/healthy in current project scans
+3. generate `skills-lock.yaml` at the project root by default
+4. allow `--output <path>` to override the destination
+5. fail by default when the destination lockfile already exists; `--force` allows overwrite
+6. write one exact locked source per bundle using these rules:
+   - git: source plus exact commit SHA
+   - npm: package name plus exact version
+   - local: project-relative path only
+7. dedupe duplicate sources and sort output deterministically
+8. fail with a user-facing error when no eligible managed project bundles exist
 
 ## 8. Configuration Requirements
 

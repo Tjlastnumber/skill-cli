@@ -19,6 +19,8 @@
 ## 功能特性
 
 - 支持从 `git`、`npm`、本地路径安装 skills
+- 支持通过 `skill lock` 从当前项目的 managed project 安装生成 `skills-lock.yaml`
+- 支持在省略 `source` 时通过 `skill install` 从 `skills-lock.yaml` 批量安装
 - 支持直接搜索公开 GitHub 仓库中的根目录与嵌套 skills，无需克隆
 - 支持 `claude-code`、`codex`、`opencode`
 - 支持安装目标：`--global`、`--project`、`--dir <path>`
@@ -48,6 +50,24 @@ skill --help
 
 ```bash
 skill install git@github.com:obra/superpowers.git --tool opencode --project
+```
+
+根据当前项目中已安装的 managed project bundles 生成锁文件：
+
+```bash
+skill lock
+```
+
+从当前项目根目录下的 `skills-lock.yaml` 安装：
+
+```bash
+skill install --tool opencode --project
+```
+
+不全局安装 CLI 时，也可以这样执行同一流程：
+
+```bash
+npx @tjlastnumber/skill-cli install --tool opencode --project
 ```
 
 查看已安装 bundle：
@@ -81,7 +101,8 @@ skill doctor --tool opencode --repair-registry
 | 命令 | 说明 |
 | --- | --- |
 | `skill search <github-repo-url> [--filter <text>]` | 搜索公开 GitHub 仓库默认分支中的仓库根目录 `SKILL.md` 与嵌套 skill 文件，无需克隆；`--filter` 对 skill 名称、描述和路径进行不区分大小写的子串匹配 |
-| `skill install <source> [--tool <tool-or-all>] [三选一目标：--global / --project / --dir <path>]` | 从 git/npm/本地源安装 bundle |
+| `skill install [source] [--tool <tool-or-all>] [三选一目标：--global / --project / --dir <path>]` | 当传入 `source` 时从 git/npm/本地源安装单个 bundle；省略 `source` 时从 `skills-lock.yaml` 安装所有 bundle 源 |
+| `skill lock [--tool <tool-or-all>] [--output <path>] [--force]` | 根据当前项目中已安装的 managed project bundles 生成 `skills-lock.yaml` |
 | `skill list [--tool <tool-or-all>] [--status <all,managed,discovered>] [--expand]` | 查看 bundle 列表，并可展开成员 skill |
 | `skill remove <bundle-name> --tool <tool-or-all>（三选一目标：--global / --project / --dir <path>）` | 删除已安装 bundle |
 | `skill register [--tool <tool-or-all>]` | 扫描并回填注册表 |
@@ -92,6 +113,31 @@ skill doctor --tool opencode --repair-registry
 当 `skill install` 在交互式终端中运行且缺少安装输入时，会按以下顺序提示：先选择安装范围；如果范围是 `--dir`，再输入自定义目录路径；最后选择工具。工具选择支持已配置的工具 id 和 `all`。
 
 在非交互环境中，缺少必填安装输入时不会触发提示，而是直接返回 user-input 错误。
+
+## 锁文件
+
+`skill lock` 默认会在项目根目录写入 `skills-lock.yaml`。它只会导出同时满足以下条件的 bundle 源：
+
+- 安装在当前项目的 `project` 目标下
+- 已被 registry 管理
+- 仍然在当前项目扫描中存在且健康
+
+当 `skill install` 省略 `source` 参数时，会从项目根目录读取 `skills-lock.yaml`，并按顺序安装其中列出的每个 bundle source。
+
+生成出的 lockfile 结构如下：
+
+```yaml
+version: 1
+bundles:
+  - source: git@github.com:obra/superpowers.git#0123456789abcdef0123456789abcdef01234567
+  - source: "@acme/skills@1.2.3"
+  - source: ./skills/local-bundle
+```
+
+说明：
+
+- 自动生成的本地 bundle source 必须位于项目根目录内，才能被写成项目相对路径
+- `skills-lock.yaml` 中的相对 source 会以项目根目录为基准解析，不受你当前所在子目录影响
 
 ## 工作原理
 

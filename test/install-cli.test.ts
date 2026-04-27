@@ -10,6 +10,7 @@ const clackPrompts = vi.hoisted(() => ({
 vi.mock("@clack/prompts", () => clackPrompts);
 
 import * as installCommandModule from "../src/commands/install.js";
+import * as installFromLockfileCommandModule from "../src/commands/install-from-lockfile.js";
 import * as installInputsModule from "../src/commands/install-inputs.js";
 import * as loadConfigModule from "../src/core/config/load.js";
 import { runCli } from "../src/cli.js";
@@ -55,6 +56,12 @@ describe("runCli install", () => {
     const runInstallCommandSpy = vi
       .spyOn(installCommandModule, "runInstallCommand")
       .mockResolvedValue(undefined);
+    const runInstallFromLockfileCommandSpy = vi
+      .spyOn(installFromLockfileCommandModule, "runInstallFromLockfileCommand")
+      .mockResolvedValue({
+        installedSources: [],
+        lockfilePath: "/workspace/skills-lock.yaml",
+      });
 
     await runCli(["node", "skill", "install", "./skills", "--tool", "codex", "--global", "--force"]);
 
@@ -72,6 +79,7 @@ describe("runCli install", () => {
       target: { type: "global" },
       force: true,
     });
+    expect(runInstallFromLockfileCommandSpy).not.toHaveBeenCalled();
   });
 
   it("resolves missing install inputs before running install", async () => {
@@ -101,6 +109,12 @@ describe("runCli install", () => {
     const runInstallCommandSpy = vi
       .spyOn(installCommandModule, "runInstallCommand")
       .mockResolvedValue(undefined);
+    const runInstallFromLockfileCommandSpy = vi
+      .spyOn(installFromLockfileCommandModule, "runInstallFromLockfileCommand")
+      .mockResolvedValue({
+        installedSources: [],
+        lockfilePath: "/workspace/skills-lock.yaml",
+      });
 
     await runCli(["node", "skill", "install", "./skills"]);
 
@@ -117,6 +131,7 @@ describe("runCli install", () => {
       target: { type: "project" },
       force: false,
     });
+    expect(runInstallFromLockfileCommandSpy).not.toHaveBeenCalled();
   });
 
   it("exits cleanly when install input resolution is cancelled", async () => {
@@ -140,6 +155,88 @@ describe("runCli install", () => {
 
     expect(runInstallCommandSpy).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(0);
+  });
+
+  it("routes to lockfile install mode when source is omitted", async () => {
+    vi.spyOn(loadConfigModule, "loadConfig").mockResolvedValue({
+      storeDir: ".skill-store",
+      tools: {
+        codex: {
+          globalDir: ".codex/global",
+          projectDir: ".codex/project",
+          entryPattern: "*",
+          nameStrategy: "basename",
+        },
+      },
+    });
+    const resolveInstallInputsSpy = vi
+      .spyOn(installInputsModule, "resolveInstallInputs")
+      .mockResolvedValue({
+        tool: "codex",
+        target: { type: "project" },
+      });
+    const runInstallCommandSpy = vi
+      .spyOn(installCommandModule, "runInstallCommand")
+      .mockResolvedValue(undefined);
+    const runInstallFromLockfileCommandSpy = vi
+      .spyOn(installFromLockfileCommandModule, "runInstallFromLockfileCommand")
+      .mockResolvedValue({
+        installedSources: ["./skills/alpha"],
+        lockfilePath: "/workspace/skills-lock.yaml",
+      });
+
+    await runCli(["node", "skill", "install"]);
+
+    expect(resolveInstallInputsSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tool: undefined,
+        target: undefined,
+        configuredTools: ["codex"],
+      }),
+    );
+    expect(runInstallFromLockfileCommandSpy).toHaveBeenCalledWith({
+      tool: "codex",
+      target: { type: "project" },
+      force: false,
+    });
+    expect(runInstallCommandSpy).not.toHaveBeenCalled();
+  });
+
+  it("routes to source install mode when source is present", async () => {
+    vi.spyOn(loadConfigModule, "loadConfig").mockResolvedValue({
+      storeDir: ".skill-store",
+      tools: {
+        codex: {
+          globalDir: ".codex/global",
+          projectDir: ".codex/project",
+          entryPattern: "*",
+          nameStrategy: "basename",
+        },
+      },
+    });
+    vi.spyOn(installInputsModule, "resolveInstallInputs").mockResolvedValue({
+      tool: "codex",
+      target: { type: "project" },
+    });
+    const runInstallCommandSpy = vi
+      .spyOn(installCommandModule, "runInstallCommand")
+      .mockResolvedValue(undefined);
+    const runInstallFromLockfileCommandSpy = vi
+      .spyOn(installFromLockfileCommandModule, "runInstallFromLockfileCommand")
+      .mockResolvedValue({
+        installedSources: ["./skills/alpha"],
+        lockfilePath: "/workspace/skills-lock.yaml",
+      });
+
+    await runCli(["node", "skill", "install", "./skills"]);
+
+    expect(runInstallCommandSpy).toHaveBeenCalledWith({
+      source: "./skills",
+      tool: "codex",
+      target: { type: "project" },
+      force: false,
+    });
+    expect(runInstallFromLockfileCommandSpy).not.toHaveBeenCalled();
   });
 
   it("resolves install inputs interactively end-to-end including the all tool option", async () => {

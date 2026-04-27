@@ -46,7 +46,8 @@ const defaultPromptAdapter: InstallPromptAdapter = {
 };
 
 export function parseExplicitInstallTargetFlags(options: InstallTargetFlags): InstallTarget | undefined {
-  const count = Number(Boolean(options.global)) + Number(Boolean(options.project)) + Number(Boolean(options.dir));
+  const hasExplicitDir = Object.prototype.hasOwnProperty.call(options, "dir");
+  const count = Number(Boolean(options.global)) + Number(Boolean(options.project)) + Number(hasExplicitDir);
 
   if (count > 1) {
     throw new SkillCliError(
@@ -63,7 +64,11 @@ export function parseExplicitInstallTargetFlags(options: InstallTargetFlags): In
     return { type: "project" };
   }
 
-  if (options.dir) {
+  if (hasExplicitDir) {
+    if (typeof options.dir !== "string" || options.dir.length === 0) {
+      throw new SkillCliError("Invalid custom directory path entered", ExitCode.USER_INPUT);
+    }
+
     return { type: "dir", dir: options.dir };
   }
 
@@ -79,6 +84,10 @@ function missingInputsError(): SkillCliError {
     "Missing install target or tool. Re-run interactively or pass --tool with one of --global, --project, or --dir <path>",
     ExitCode.USER_INPUT,
   );
+}
+
+function noConfiguredToolsError(): SkillCliError {
+  return new SkillCliError("No configured tools available for install", ExitCode.USER_INPUT);
 }
 
 function scopeOptions(): Array<{ value: InstallTargetType; label: string }> {
@@ -153,6 +162,14 @@ export async function resolveInstallInputs(
   let target = options.target;
   let tool = options.tool;
   const needsCustomDirPrompt = target?.type === "dir" && !target.dir;
+
+  if (options.configuredTools.length === 0) {
+    throw noConfiguredToolsError();
+  }
+
+  if (tool) {
+    tool = validateTool(tool, options.configuredTools);
+  }
 
   if (hasCompleteTarget(target) && tool) {
     return { target, tool };
