@@ -1,4 +1,4 @@
-import { writeFile } from "node:fs/promises";
+import { lstat, rm, writeFile } from "node:fs/promises";
 
 import { stringify } from "yaml";
 
@@ -19,6 +19,19 @@ export async function writeSkillsLockfile(filePath: string, lockfile: SkillsLock
     indent: 2,
     lineWidth: 0,
   });
+
+  const existingStats = await lstat(filePath).catch((error) => {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return undefined;
+    }
+    throw new FilesystemError(`Failed to inspect lockfile path: ${filePath}`, undefined, error);
+  });
+
+  if (existingStats?.isSymbolicLink()) {
+    await rm(filePath, { force: true }).catch((error) => {
+      throw new FilesystemError(`Failed to replace symlink lockfile path: ${filePath}`, undefined, error);
+    });
+  }
 
   await writeFile(filePath, yaml, "utf8").catch((error) => {
     throw new FilesystemError(`Failed to write lockfile: ${filePath}`, undefined, error);

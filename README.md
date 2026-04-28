@@ -22,7 +22,8 @@ Different coding CLIs use different skill directories. Managing the same skill s
 - Install skills from `git`, `npm`, or local paths
 - Install specific skills by name with `skill install --skill <name>` or `--skill '*'`
 - Generate skill-level `skills-lock.yaml` v2 from managed project installs with `skill lock`
-- Install all locked sources from `skills-lock.yaml` with `skill install`
+- Auto-sync `skills-lock.yaml` on `skill install <source> --project` and `skill remove <bundle-name> --project`
+- Install all locked sources from `skills-lock.yaml` with `skill install` when `source` is omitted
 - Search repository-root and nested skills from public GitHub repositories without cloning
 - Manage skills for `claude-code`, `codex`, and `opencode`
 - Install targets: `--global`, `--project`, and `--dir <path>`
@@ -63,7 +64,9 @@ skill install git@github.com:obra/superpowers.git --tool opencode --project --sk
 
 Repeated installs from the same `source` accumulate named skills for the same tool + target instead of replacing earlier selections.
 
-Generate a project lockfile from the currently installed managed project bundles:
+That project install also creates or updates `skills-lock.yaml` automatically.
+
+Rebuild the project lockfile manually from the current managed project installs:
 
 ```bash
 skill lock
@@ -73,6 +76,14 @@ Install from `skills-lock.yaml` in the current project:
 
 ```bash
 skill install --tool opencode --project
+```
+
+This lockfile-driven install reads `skills-lock.yaml` but does not rewrite it.
+
+Remove a managed project bundle and auto-sync the lockfile:
+
+```bash
+skill remove superpowers --tool opencode --project
 ```
 
 Run the same lockfile install flow without a global install:
@@ -112,10 +123,10 @@ skill doctor --tool opencode --repair-registry
 | Command | Description |
 | --- | --- |
 | `skill search <github-repo-url> [--filter <text>]` | Search a public GitHub repository default branch for a repository-root `SKILL.md` and nested skill files without cloning; `--filter` does a case-insensitive substring match against skill name, description, and path |
-| `skill install [source] [--skill <name>]... [--tool <tool-or-all>] [one target: --global / --project / --dir <path>]` | Install one source from git/npm/local input, optionally restricting the install to specific skill names; when `source` is omitted, install all locked source groups from `skills-lock.yaml` |
-| `skill lock [--tool <tool-or-all>] [--output <path>] [--force]` | Generate skill-level `skills-lock.yaml` v2 entries from currently installed managed project skills |
+| `skill install [source] [--skill <name>]... [--tool <tool-or-all>] [one target: --global / --project / --dir <path>]` | Install one source from git/npm/local input, optionally restricting the install to specific skill names; `--project` installs with an explicit `source` auto-create or update `skills-lock.yaml`; when `source` is omitted, install all locked source groups from `skills-lock.yaml` without rewriting it |
+| `skill lock [--tool <tool-or-all>] [--output <path>] [--force]` | Manually generate or rebuild skill-level `skills-lock.yaml` v2 entries from currently installed managed project skills |
 | `skill list [--tool <tool-or-all>] [--status <all,managed,discovered>] [--expand]` | List bundles and optionally expand member skills |
-| `skill remove <bundle-name> --tool <tool-or-all> (one target: --global / --project / --dir <path>)` | Remove an installed bundle |
+| `skill remove <bundle-name> --tool <tool-or-all> (one target: --global / --project / --dir <path>)` | Remove an installed bundle; `--project` removals auto-update the default `skills-lock.yaml` and delete it when no eligible managed project skills remain |
 | `skill register [--tool <tool-or-all>]` | Backfill registry from discovered installs |
 | `skill doctor [--tool <tool-or-all>] [--repair-registry]` | Validate install state and optionally repair registry |
 | `skill relink [--tool <tool-or-all>]` | Recreate missing or broken symlinks |
@@ -127,13 +138,17 @@ In non-interactive environments, missing required install inputs do not trigger 
 
 ## Lockfiles
 
-`skill lock` writes `skills-lock.yaml` at the project root by default. It only emits skill entries from installs that are:
+`skill lock` is the manual rebuild command. It writes `skills-lock.yaml` at the project root by default. It only emits skill entries from installs that are:
 
 - installed in the current project's `project` targets
 - managed by the registry
 - still present and healthy in the current project scan
 
-`skill install` with no `source` argument reads `skills-lock.yaml` from the project root, groups entries by `source`, and installs each source sequentially.
+`skill install <source> --project` automatically creates or updates the default project-root `skills-lock.yaml` after the install succeeds.
+
+`skill remove <bundle-name> --project` automatically updates the default project-root `skills-lock.yaml` after the removal succeeds. If no eligible managed project skills remain, the auto-synced default lockfile is deleted.
+
+`skill install` with no `source` argument reads `skills-lock.yaml` from the project root, groups entries by `source`, and installs each source sequentially, but it does not rewrite the lockfile.
 
 Lockfile v1 is no longer supported. Regenerate older files with `skill lock --force`.
 
@@ -155,6 +170,7 @@ Notes:
 - `name: "*"` means "install every discovered skill from this source"
 - generated local sources must live inside the project root so they can be written as project-relative paths
 - relative sources in `skills-lock.yaml` are resolved from the project root, not the nested shell cwd
+- when no eligible managed project skills remain, `skill lock` fails in manual mode, while automatic project sync removes the default lockfile if present and otherwise leaves no file behind
 
 ## How it works
 

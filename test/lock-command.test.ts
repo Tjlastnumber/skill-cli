@@ -95,15 +95,24 @@ describe("runLockCommand", () => {
     const homeDir = join(base, "home");
     const projectRoot = join(base, "repo");
     const cwd = projectRoot;
+    const sourceRoot = join(projectRoot, "skills-source");
+    const storeDir = join(base, "store");
+    const globalDir = join(base, "global-skills");
     const outputPath = join(projectRoot, "skills-lock.yaml");
 
     await mkdir(join(projectRoot, ".git"), { recursive: true });
-    await writeConfig({
-      homeDir,
-      storeDir: join(base, "store"),
-      projectDir: ".opencode/skills",
-      globalDir: join(base, "global-skills"),
-    });
+    await mkdir(join(sourceRoot, "alpha-skill"), { recursive: true });
+    await writeFile(join(sourceRoot, "alpha-skill", "SKILL.md"), "# alpha\n");
+    await writeConfig({ homeDir, storeDir, projectDir: ".opencode/skills", globalDir });
+    await runInstallCommand(
+      {
+        source: "./skills-source",
+        tool: "opencode",
+        target: { type: "project" },
+        force: false,
+      },
+      { cwd, homeDir, output: captureOutput().output },
+    );
     await writeFile(outputPath, "version: 1\n", "utf8");
 
     await expect(
@@ -123,15 +132,24 @@ describe("runLockCommand", () => {
     const homeDir = join(base, "home");
     const projectRoot = join(base, "repo");
     const cwd = projectRoot;
+    const sourceRoot = join(projectRoot, "skills-source");
+    const storeDir = join(base, "store");
+    const globalDir = join(base, "global-skills");
     const outputPath = join(projectRoot, "skills-lock.yaml");
 
     await mkdir(join(projectRoot, ".git"), { recursive: true });
-    await writeConfig({
-      homeDir,
-      storeDir: join(base, "store"),
-      projectDir: ".opencode/skills",
-      globalDir: join(base, "global-skills"),
-    });
+    await mkdir(join(sourceRoot, "alpha-skill"), { recursive: true });
+    await writeFile(join(sourceRoot, "alpha-skill", "SKILL.md"), "# alpha\n");
+    await writeConfig({ homeDir, storeDir, projectDir: ".opencode/skills", globalDir });
+    await runInstallCommand(
+      {
+        source: "./skills-source",
+        tool: "opencode",
+        target: { type: "project" },
+        force: false,
+      },
+      { cwd, homeDir, output: captureOutput().output },
+    );
     await symlink(join(projectRoot, "missing-lockfile.yaml"), outputPath);
 
     await expect(

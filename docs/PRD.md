@@ -116,33 +116,37 @@ The CLI must install skills from a source to one or multiple tools.
 
 Command:
 
-`skill install [source] [--tool <tool|all>] [--global|--project|--dir <path>] [--force]`
+`skill install [source] [--skill <name>]... [--tool <tool|all>] [--global|--project|--dir <path>] [--force]`
 
 Expected behavior:
 
 1. when `source` is provided, resolve and fetch that source
-2. when `source` is omitted, load bundle sources from the project-root `skills-lock.yaml`
-3. store fetched content in canonical store
-4. discover skill entries using tool-specific discovery rules
-5. create symlinks in target directories
-6. record installation state in local registry
-7. in interactive terminals, prompt for missing inputs in this order: install scope, custom directory path when scope is `dir`, then tool selection
-8. tool selection must support a single configured tool id or `all`
-9. in non-interactive environments, missing required install inputs must return a user-input error instead of prompting
-10. lockfile-relative local sources must resolve from the project root, not a nested shell cwd
-11. batch lockfile installs may continue through per-bundle failures, but must emit an aggregated failure at the end if any bundle fails
+2. support optional `--skill <name>` filtering when `source` is provided
+3. when `source` is omitted, load locked skill entries from the project-root `skills-lock.yaml`, group them by `source`, and install those grouped sources sequentially
+4. store fetched content in canonical store
+5. discover skill entries using tool-specific discovery rules
+6. create symlinks in target directories
+7. record installation state in local registry
+8. in interactive terminals, prompt for missing inputs in this order: install scope, custom directory path when scope is `dir`, then tool selection
+9. tool selection must support a single configured tool id or `all`
+10. in non-interactive environments, missing required install inputs must return a user-input error instead of prompting
+11. lockfile-relative local sources must resolve from the project root, not a nested shell cwd
+12. batch lockfile installs may continue through per-source failures, but must emit an aggregated failure at the end if any source fails
+13. when `source` is provided with a `project` target and the install succeeds, automatically create or update the default project-root `skills-lock.yaml`
+14. when `source` is omitted, read `skills-lock.yaml` but do not rewrite it as part of the install flow
 
 ### FR-2 Remove
 
 Command:
 
-`skill remove <skill-name> --tool <tool|all> [--global|--project|--dir <path>]`
+`skill remove <bundle-name> --tool <tool|all> [--global|--project|--dir <path>]`
 
 Expected behavior:
 
 1. remove target symlink(s)
 2. preserve store content by default
 3. update local registry
+4. when removing from a `project` target succeeds, automatically sync the default project-root `skills-lock.yaml`
 
 ### FR-3 List
 
@@ -201,17 +205,24 @@ Commands:
 
 Expected behavior:
 
-1. scan the current project's configured `project` targets only
-2. only include bundles that are both registry-managed and still present/healthy in current project scans
-3. generate `skills-lock.yaml` at the project root by default
-4. allow `--output <path>` to override the destination
-5. fail by default when the destination lockfile already exists; `--force` allows overwrite
-6. write one exact locked source per bundle using these rules:
+1. `skill lock` is the manual lockfile rebuild command
+2. scan the current project's configured `project` targets only
+3. only include skill entries from installs that are both registry-managed and still present/healthy in current project scans
+4. generate `skills-lock.yaml` at the project root by default
+5. allow `--output <path>` to override the destination in manual mode
+6. fail by default when the manual-mode destination lockfile already exists; `--force` allows overwrite
+7. write lockfile entries in `version: 2` format as `skills[]`, where each entry contains:
+   - `source`: one exact locked source
+   - `name`: either one exact skill name or `"*"` for all discovered skills from that source
+8. resolve exact locked sources using these rules:
    - git: source plus exact commit SHA
    - npm: package name plus exact version
    - local: project-relative path only
-7. dedupe duplicate sources and sort output deterministically
-8. fail with a user-facing error when no eligible managed project bundles exist
+9. collapse full-source installs to `name: "*"`, but emit explicit skill names for partial source installs
+10. if the same source has conflicting selected skill names across tools, fail with a user-facing error instead of writing an ambiguous shared lockfile
+11. dedupe duplicate skill entries and sort output deterministically
+12. in manual mode, fail with a user-facing error when no eligible managed project skills exist
+13. in automatic sync mode for project installs/removals, always target the default project-root `skills-lock.yaml`, ignore custom output paths, and delete that default lockfile when no eligible managed project skills remain
 
 ## 8. Configuration Requirements
 

@@ -4,6 +4,7 @@ import { Command, CommanderError } from "commander";
 import { pathToFileURL } from "node:url";
 
 import { runDoctorCommand } from "./commands/doctor.js";
+import { runAutoSyncProjectLockfile } from "./commands/auto-sync-project-lockfile.js";
 import { runInstallFromLockfileCommand } from "./commands/install-from-lockfile.js";
 import { runInstallCommand } from "./commands/install.js";
 import { parseExplicitInstallTargetFlags, resolveInstallInputs } from "./commands/install-inputs.js";
@@ -104,6 +105,14 @@ export async function runCli(argv: string[] = process.argv): Promise<void> {
           target: resolved.target,
           ...(options.skill && options.skill.length > 0 ? { skills: options.skill } : {}),
         });
+
+        if (resolved.target.type === "project") {
+          await runAutoSyncProjectLockfile({
+            action: "install",
+            tool: "all",
+          });
+        }
+
         return;
       }
 
@@ -122,11 +131,20 @@ export async function runCli(argv: string[] = process.argv): Promise<void> {
     .option("--project", "Remove from tool project directory")
     .option("--dir <path>", "Remove from custom directory")
     .action(async (bundleName: string, options: TargetOptions & { tool: string }) => {
+      const target = parseTargetOptions(options);
+
       await runRemoveCommand({
         bundleName,
         tool: options.tool,
-        target: parseTargetOptions(options),
+        target,
       });
+
+      if (target.type === "project") {
+        await runAutoSyncProjectLockfile({
+          action: "remove",
+          tool: "all",
+        });
+      }
     });
 
   program

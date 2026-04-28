@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -97,5 +97,29 @@ describe("lockfile load/write", () => {
       exitCode: ExitCode.CONFIG,
       message: expect.stringMatching(/Invalid skills lockfile/),
     });
+  });
+
+  it("replaces a live symlink path instead of overwriting its target", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-lockfile-live-symlink-"));
+    cleanupDirs.push(base);
+
+    const filePath = join(base, "skills-lock.yaml");
+    const targetPath = join(base, "shared-lockfile.yaml");
+    const lockfile = {
+      version: 2 as const,
+      skills: [{ source: "./skills/local-bundle", name: "browser" }],
+    };
+
+    await writeFile(targetPath, "sentinel\n", "utf8");
+    await symlink(targetPath, filePath);
+
+    await writeSkillsLockfile(filePath, lockfile);
+
+    await expect(loadSkillsLockfile(filePath)).resolves.toEqual(lockfile);
+    await expect(readFile(targetPath, "utf8")).resolves.toBe("sentinel\n");
+    await expect(lstat(filePath)).resolves.toMatchObject({
+      isSymbolicLink: expect.any(Function),
+    });
+    expect((await lstat(filePath)).isSymbolicLink()).toBe(false);
   });
 });
