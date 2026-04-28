@@ -7,10 +7,13 @@
 
 ## [未发布]
 
+## [0.5.0] - 2026-04-28
+
 ### 新增
 
 - 新增 `skill install <source> --skill <name>`，支持重复传入 `--skill`，并支持 `--skill '*'` 安装某个 source 下发现的全部 skills。
 - 对同一个 source、同一个 tool 和 target 再次执行不同 `--skill` 选择时，保留之前已安装的命名 skill，而不是用后一次安装覆盖前一次选择。
+- 新增默认项目 `skills-lock.yaml` 自动同步能力：成功执行 `skill install <source> --project` 和 `skill remove <bundle-name> --project` 后自动更新或删除锁文件。
 
 ### 变更
 

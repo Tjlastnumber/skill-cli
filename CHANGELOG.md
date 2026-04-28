@@ -7,10 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-04-28
+
 ### Added
 
 - Add `skill install <source> --skill <name>` with repeatable `--skill` support, including `--skill '*'` for installing every discovered skill from a source.
 - Keep previously installed named skills when the same source is installed again with different `--skill` selections for the same tool and target.
+- Auto-sync the default project `skills-lock.yaml` after successful `skill install <source> --project` and `skill remove <bundle-name> --project` operations.
 
 ### Changed
 
