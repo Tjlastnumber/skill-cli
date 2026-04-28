@@ -29,7 +29,7 @@ function captureOutput() {
 describe("runListCommand", () => {
   const fakeCacheKey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
-  it("prints installed entries from registry", async () => {
+  it("shows managed bundles when live symlinks point into the store", async () => {
     const base = await mkdtemp(join(tmpdir(), "skill-cli-list-"));
     cleanupDirs.push(base);
 
@@ -70,11 +70,12 @@ describe("runListCommand", () => {
     );
 
     const capture = captureOutput();
-    await runListCommand(
-      { tool: "all", expand: true },
+    const result = await runListCommand(
+      { tool: "codex", expand: true },
       { cwd, homeDir, output: capture.output },
     );
 
+    expect(result.entries[0]).toMatchObject({ status: "managed", bundleName: "skills-source" });
     expect(capture.logs.some((line) => line.includes("Managed Bundles"))).toBe(true);
     expect(capture.logs.some((line) => line.includes("codex/"))).toBe(true);
     expect(capture.logs.some((line) => line.includes("skills-source"))).toBe(true);
@@ -82,7 +83,7 @@ describe("runListCommand", () => {
     expect(capture.logs.some((line) => line.includes("alpha-skill ->"))).toBe(true);
   });
 
-  it("shows discovered status for installed symlink not in registry", async () => {
+  it("shows managed status for store-backed symlinks without registry fixtures", async () => {
     const base = await mkdtemp(join(tmpdir(), "skill-cli-list-discovered-"));
     cleanupDirs.push(base);
 
@@ -118,12 +119,13 @@ describe("runListCommand", () => {
     );
 
     const capture = captureOutput();
-    await runListCommand(
+    const result = await runListCommand(
       { tool: "opencode" },
       { cwd, homeDir, output: capture.output },
     );
 
-    expect(capture.logs.some((line) => line.includes("Discovered Bundles"))).toBe(true);
+    expect(result.entries[0]).toMatchObject({ status: "managed", bundleName: "using-superpowers" });
+    expect(capture.logs.some((line) => line.includes("Managed Bundles"))).toBe(true);
     expect(capture.logs.some((line) => line.includes("using-superpowers"))).toBe(true);
   });
 
@@ -135,8 +137,8 @@ describe("runListCommand", () => {
     const cwd = join(base, "workspace", "repo");
     const projectRoot = join(base, "workspace", "repo");
     const targetDir = join(projectRoot, ".opencode", "skills");
-    const storeDir = join(base, "store");
-    const sourceSkillDir = join(storeDir, "store", fakeCacheKey, "skills", "using-superpowers");
+    const sourceRoot = join(base, "external-source");
+    const sourceSkillDir = join(sourceRoot, "using-superpowers");
 
     await mkdir(join(homeDir, ".config", "skill-cli"), { recursive: true });
     await mkdir(join(projectRoot, ".git"), { recursive: true });
@@ -149,7 +151,6 @@ describe("runListCommand", () => {
       join(homeDir, ".config", "skill-cli", "config.json"),
       JSON.stringify(
         {
-          storeDir,
           tools: {
             opencode: {
               projectDir: ".opencode/skills",
@@ -162,23 +163,24 @@ describe("runListCommand", () => {
     );
 
     const capture = captureOutput();
-    await runListCommand(
+    const result = await runListCommand(
       { tool: "opencode", status: "managed" },
       { cwd, homeDir, output: capture.output },
     );
 
+    expect(result.entries).toHaveLength(0);
     expect(capture.logs.some((line) => line.includes("No bundles found for selected filters"))).toBe(true);
   });
 
-  it("shows discovered status for custom dir targets", async () => {
+  it("shows discovered status for custom dir targets outside the store", async () => {
     const base = await mkdtemp(join(tmpdir(), "skill-cli-list-custom-dir-"));
     cleanupDirs.push(base);
 
     const homeDir = join(base, "home");
     const cwd = join(base, "workspace");
     const targetDir = join(base, "custom-skills");
-    const storeDir = join(base, "store");
-    const sourceSkillDir = join(storeDir, "store", fakeCacheKey, "skills", "using-superpowers");
+    const sourceRoot = join(base, "external-source");
+    const sourceSkillDir = join(sourceRoot, "using-superpowers");
 
     await mkdir(join(homeDir, ".config", "skill-cli"), { recursive: true });
     await mkdir(sourceSkillDir, { recursive: true });
@@ -187,11 +189,12 @@ describe("runListCommand", () => {
     await symlink(sourceSkillDir, join(targetDir, "using-superpowers"), "dir");
 
     const capture = captureOutput();
-    await runListCommand(
+    const result = await runListCommand(
       { tool: "opencode", dir: targetDir },
       { cwd, homeDir, output: capture.output },
     );
 
+    expect(result.entries[0]).toMatchObject({ status: "discovered", targetType: "dir" });
     expect(capture.logs.some((line) => line.includes("Discovered Bundles"))).toBe(true);
     expect(capture.logs.some((line) => line.includes("using-superpowers"))).toBe(true);
     expect(capture.logs.some((line) => line.includes("[dir]"))).toBe(true);

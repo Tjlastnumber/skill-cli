@@ -44,27 +44,27 @@
 | T303 | Implement skill naming strategy (`parentDir` default) | P0 | done | Implemented with duplicate name checks |
 | T304 | Implement discovery diagnostics output | P1 | pending | Show matched entries and skipped paths |
 
-## Phase 4 - Linking and Registry
+## Phase 4 - Linking and Live State
 
 | ID | Task | Priority | Status | Notes |
 |---|---|---|---|---|
 | T401 | Implement target path resolver for `--global/--project/--dir` | P0 | done | Implemented in install workflow |
 | T402 | Implement symlink creation engine | P0 | done | Implemented in `src/core/linker/link-skill.ts` |
 | T403 | Implement conflict policy + `--force` | P0 | done | Existing target blocks by default; `--force` replaces |
-| T404 | Implement local registry write/update | P0 | done | `registry.json` v2 bundle model + v1 migration implemented |
-| T405 | Implement idempotent install behavior | P1 | in_progress | Symlink idempotency and registry upsert done; broader flow tests pending |
+| T404 | Remove registry persistence and derive install state from live scans | P0 | done | Registryless live-state model is in place |
+| T405 | Implement idempotent install behavior | P1 | in_progress | Symlink idempotency is in place; broader flow tests pending |
 
 ## Phase 5 - Commands
 
 | ID | Task | Priority | Status | Notes |
 |---|---|---|---|---|
 | T501 | Implement `install` command | P0 | done | Source parse/fetch/store/discovery/link path implemented |
-| T502 | Implement `remove` command | P0 | done | Removes bundle members and updates bundle registry |
-| T503 | Implement `list` command | P0 | done | Bundle-level managed/discovered output with filters/expand |
-| T504 | Implement `doctor` command | P0 | done | Summary checks + `--repair-registry` backfill flow implemented |
-| T505 | Implement `relink` command | P1 | done | Recreates missing/wrong symlinks from bundle registry members |
+| T502 | Implement `remove` command | P0 | done | Removes live managed bundles and project selections |
+| T503 | Implement `list` command | P0 | done | Bundle-level managed/discovered output with filters/expand from live scans |
+| T504 | Implement `doctor` command | P0 | done | Summary checks plus project drift guidance from live state and `skills-lock.yaml` |
+| T505 | Remove `relink` command from project scope | P1 | done | Recovery now comes from reinstalling desired state via `skills-lock.yaml` |
 | T506 | Implement `prune` command | P1 | done | Removes unreferenced store cache directories with size summary |
-| T507 | Implement `register` command | P1 | done | Backfills registry from installed skills |
+| T507 | Remove `register` command from project scope | P1 | done | Registry backfill is no longer part of the product |
 
 ## Phase 6 - Multi-Tool and Batch UX
 
@@ -83,9 +83,9 @@
 | T703 | Unit tests: discovery and naming | P0 | in_progress | Covered indirectly through install tests; dedicated tests pending |
 | T704 | Unit tests: linker and conflict logic | P0 | in_progress | Covered indirectly through install conflict tests |
 | T705 | Integration tests: install/remove/list | P0 | done | Added install/list/remove integration-style tests |
-| T706 | Integration tests: doctor/relink/prune | P1 | done | Added doctor/relink/prune command tests |
+| T706 | Integration tests: doctor/prune | P1 | done | Added doctor/prune command tests for live-state workflows |
 | T707 | Integration tests: `--tool all` partial failure behavior | P1 | pending | Aggregated result correctness |
-| T708 | Integration tests: register/discovered list | P1 | done | Added discovered/managed and register tests |
+| T708 | Integration tests: discovered/managed list and command removals | P1 | done | Added live-state list coverage and CLI removal tests |
 
 ## Phase 8 - Documentation and Release Prep
 
@@ -105,4 +105,4 @@
 - [ ] Only symlinks are written to target skill directories
 - [ ] Private source workflows validated with existing credentials
 - [ ] `doctor` can detect and report broken links and config errors
-- [x] `relink` and `prune` behavior verified in integration tests
+- [x] `prune` behavior verified in integration tests

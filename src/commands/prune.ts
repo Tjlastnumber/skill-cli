@@ -3,10 +3,15 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { loadConfig } from "../core/config/load.js";
+import { scanLiveBundles } from "../core/discovery/scan-live-bundles.js";
 import { createOutput, type Output } from "../core/output.js";
-import { loadRegistry } from "../core/registry/registry.js";
+import { resolvePath } from "../core/path-utils.js";
 
-import { resolveStoreRootDir } from "./shared.js";
+import { resolveScanTargets, resolveStoreRootDir } from "./shared.js";
+
+export interface PruneCommandArgs {
+  dirs?: string[];
+}
 
 export interface PruneRuntimeOptions {
   cwd?: string;
@@ -58,6 +63,7 @@ async function directorySize(pathValue: string): Promise<number> {
 }
 
 export async function runPruneCommand(
+  args: PruneCommandArgs = {},
   runtime: PruneRuntimeOptions = {},
 ): Promise<PruneCommandResult> {
   const cwd = runtime.cwd ?? process.cwd();
@@ -67,12 +73,24 @@ export async function runPruneCommand(
 
   const config = await loadConfig({ cwd, homeDir, env });
   const storeRootDir = resolveStoreRootDir(config.storeDir, cwd, homeDir);
-  const registry = await loadRegistry(storeRootDir);
+  const scanTargets = (
+    await Promise.all(
+      Object.entries(config.tools).map(async ([toolName, toolConfig]) => {
+        const baseTargets = await resolveScanTargets({ tool: toolName, toolConfig, cwd, homeDir });
+        const extraTargets = (args.dirs ?? []).map((dir) => ({
+          tool: toolName,
+          targetType: "dir" as const,
+          targetRoot: resolvePath(dir, cwd, homeDir),
+          entryPattern: toolConfig.entryPattern,
+        }));
 
+        return [...baseTargets, ...extraTargets];
+      }),
+    )
+  ).flat();
+  const live = await scanLiveBundles(scanTargets);
   const liveCacheKeys = new Set(
-    registry.bundles
-      .map((bundle) => bundle.cacheKey)
-      .filter((cacheKey) => Boolean(cacheKey) && cacheKey !== "unknown"),
+    live.managedBundles.map((bundle) => bundle.cacheKey).filter((cacheKey) => cacheKey !== "unknown"),
   );
 
   const storeEntriesDir = join(storeRootDir, "store");

@@ -1,13 +1,11 @@
 import { homedir } from "node:os";
 
 import { loadConfig } from "../core/config/load.js";
-import { groupScannedSkillsIntoBundles } from "../core/discovery/group-scanned-bundles.js";
-import { scanInstalledSkills } from "../core/discovery/scan-installed.js";
+import { scanLiveBundles } from "../core/discovery/scan-live-bundles.js";
 import { ExitCode, SkillCliError } from "../core/errors.js";
 import { createOutput, type Output } from "../core/output.js";
-import { loadRegistry, type RegistryBundleEntry } from "../core/registry/registry.js";
 
-import { resolveScanTargets, resolveStoreRootDir, selectTools } from "./shared.js";
+import { resolveScanTargets, selectTools } from "./shared.js";
 
 export interface ListCommandArgs {
   tool: string;
@@ -23,8 +21,23 @@ export interface ListRuntimeOptions {
   output?: Output;
 }
 
+export interface ListCommandEntry {
+  bundleId: string;
+  bundleName: string;
+  tool: string;
+  targetType: "global" | "project" | "dir";
+  targetRoot: string;
+  sourceRaw: string;
+  sourceKind: "local" | "git" | "npm" | "unknown";
+  sourceCanonical: string;
+  cacheKey: string;
+  storedSourceDir: string;
+  members: Array<{ skillName: string; linkPath: string; sourceSkillDir?: string }>;
+  status: "managed" | "discovered";
+}
+
 export interface ListCommandResult {
-  entries: Array<RegistryBundleEntry & { status: "managed" | "discovered" }>;
+  entries: ListCommandEntry[];
 }
 
 function normalizeStatusFilter(value: string | undefined): "all" | "managed" | "discovered" {
@@ -40,7 +53,7 @@ function normalizeStatusFilter(value: string | undefined): "all" | "managed" | "
   );
 }
 
-function formatSourceLabel(entry: RegistryBundleEntry & { status: "managed" | "discovered" }): string {
+function formatSourceLabel(entry: ListCommandEntry): string {
   if (entry.sourceCanonical && entry.sourceCanonical !== "unknown") {
     return entry.sourceCanonical;
   }
@@ -60,12 +73,6 @@ export async function runListCommand(
 
   const config = await loadConfig({ cwd, homeDir, env });
   const selectedTools = selectTools(args.tool, Object.keys(config.tools));
-  const storeRootDir = resolveStoreRootDir(config.storeDir, cwd, homeDir);
-  const registry = await loadRegistry(storeRootDir);
-
-  const managedEntries = registry.bundles
-    .filter((entry) => selectedTools.includes(entry.tool))
-    .sort((left, right) => left.tool.localeCompare(right.tool) || left.bundleName.localeCompare(right.bundleName));
 
   const scanTargets = (
     await Promise.all(
@@ -81,49 +88,16 @@ export async function runListCommand(
           cwd,
           homeDir,
           dir: args.dir,
-          registryBundles: managedEntries,
         });
       }),
     )
   ).flat();
 
-  const scannedEntries = await scanInstalledSkills(scanTargets);
-  const groupedDiscovered = await groupScannedSkillsIntoBundles(
-    scannedEntries.filter((entry) => !entry.isBrokenSymlink),
-  );
+  const live = await scanLiveBundles(scanTargets);
 
-  const managedByBundleKey = new Map<string, RegistryBundleEntry>();
-  for (const entry of managedEntries) {
-    managedByBundleKey.set(`${entry.tool}::${entry.targetType}::${entry.targetRoot}::${entry.bundleId}`, entry);
-  }
-
-  const discoveredEntries: RegistryBundleEntry[] = [];
-  for (const bundle of groupedDiscovered) {
-    const key = `${bundle.tool}::${bundle.targetType}::${bundle.targetRoot}::${bundle.bundleId}`;
-    if (managedByBundleKey.has(key)) {
-      continue;
-    }
-
-    discoveredEntries.push({
-      bundleId: bundle.bundleId,
-      bundleName: bundle.bundleName,
-      tool: bundle.tool,
-      targetType: bundle.targetType,
-      targetRoot: bundle.targetRoot,
-      sourceRaw: bundle.sourceRaw,
-      sourceKind: bundle.sourceKind,
-      sourceCanonical: bundle.sourceCanonical,
-      cacheKey: bundle.cacheKey,
-      storedSourceDir: bundle.storedSourceDir,
-      installedAt: "unknown",
-      updatedAt: "unknown",
-      members: bundle.members,
-    });
-  }
-
-  const entries: Array<RegistryBundleEntry & { status: "managed" | "discovered" }> = [
-    ...managedEntries.map((entry) => ({ ...entry, status: "managed" as const })),
-    ...discoveredEntries.map((entry) => ({ ...entry, status: "discovered" as const })),
+  const entries: ListCommandEntry[] = [
+    ...live.managedBundles.map((entry) => ({ ...entry, status: "managed" as const })),
+    ...live.discoveredBundles.map((entry) => ({ ...entry, status: "discovered" as const })),
   ].sort(
     (left, right) =>
       left.tool.localeCompare(right.tool) ||
@@ -151,7 +125,7 @@ export async function runListCommand(
 
   const printSection = (
     title: string,
-    sectionEntries: Array<RegistryBundleEntry & { status: "managed" | "discovered" }>,
+    sectionEntries: ListCommandEntry[],
   ) => {
     if (sectionEntries.length === 0) {
       return;

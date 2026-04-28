@@ -60,10 +60,16 @@ async function updateHashForDirectory(
   }
 }
 
-export async function createSourceSnapshotKey(sourceDir: string): Promise<string> {
+export async function createSourceSnapshotKey(
+  sourceDir: string,
+  options: { provenance?: string } = {},
+): Promise<string> {
   const rootDir = resolve(sourceDir);
   const hash = createHash("sha256");
   hash.update("skill-cli-source-snapshot\n");
+  if (options.provenance) {
+    hash.update(`provenance:${options.provenance}\n`);
+  }
   await updateHashForDirectory(hash, rootDir, rootDir);
   return hash.digest("hex");
 }

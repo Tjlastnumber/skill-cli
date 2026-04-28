@@ -51,6 +51,70 @@ describe("fetchSource", () => {
     expect(calls).toHaveLength(0);
   });
 
+  it("returns different local cache keys for identical contents at different absolute paths", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-fetch-local-provenance-"));
+    cleanupDirs.push(base);
+
+    const firstDir = join(base, "workspace-a", "skills", "alpha");
+    const secondDir = join(base, "workspace-b", "skills", "alpha");
+
+    await mkdir(firstDir, { recursive: true });
+    await mkdir(secondDir, { recursive: true });
+    await writeFile(join(firstDir, "SKILL.md"), "# alpha\n");
+    await writeFile(join(secondDir, "SKILL.md"), "# alpha\n");
+
+    const firstResult = await fetchSource(
+      {
+        kind: "local",
+        raw: "workspace-a/skills/alpha",
+        path: resolve(firstDir),
+      },
+      {
+        tempDir: join(base, "tmp"),
+      },
+    );
+
+    const secondResult = await fetchSource(
+      {
+        kind: "local",
+        raw: "workspace-b/skills/alpha",
+        path: resolve(secondDir),
+      },
+      {
+        tempDir: join(base, "tmp"),
+      },
+    );
+
+    expect(firstResult.cacheKey).not.toBe(secondResult.cacheKey);
+  });
+
+  it("changes the local cache key when local content changes", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-fetch-local-content-"));
+    cleanupDirs.push(base);
+
+    const localDir = join(base, "workspace", "skills", "alpha");
+    await mkdir(localDir, { recursive: true });
+    await writeFile(join(localDir, "SKILL.md"), "# alpha\n");
+
+    const descriptor: SourceDescriptor = {
+      kind: "local",
+      raw: "workspace/skills/alpha",
+      path: resolve(localDir),
+    };
+
+    const initialResult = await fetchSource(descriptor, {
+      tempDir: join(base, "tmp"),
+    });
+
+    await writeFile(join(localDir, "SKILL.md"), "# alpha updated\n");
+
+    const updatedResult = await fetchSource(descriptor, {
+      tempDir: join(base, "tmp"),
+    });
+
+    expect(initialResult.cacheKey).not.toBe(updatedResult.cacheKey);
+  });
+
   it("resolves git branch refs to a remote commit and uses a commit-based cache key", async () => {
     const base = await mkdtemp(join(tmpdir(), "skill-cli-fetch-git-"));
     cleanupDirs.push(base);

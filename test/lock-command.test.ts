@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { lstat, mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -319,8 +319,8 @@ describe("runLockCommand", () => {
     });
   });
 
-  it("skips stale registry-only bundles that are not actually installed", async () => {
-    const base = await mkdtemp(join(tmpdir(), "skill-cli-lock-command-stale-"));
+  it("creates skills-lock.yaml from live managed project bundles without registry.json", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-lock-command-live-"));
     cleanupDirs.push(base);
 
     const homeDir = join(base, "home");
@@ -345,27 +345,8 @@ describe("runLockCommand", () => {
       { cwd, homeDir, output: captureOutput().output },
     );
 
-    const registryPath = join(storeDir, "registry.json");
-    const registry = JSON.parse(await readFile(registryPath, "utf8")) as {
-      version: number;
-      bundles: Array<Record<string, unknown>>;
-    };
-
-    registry.bundles.push({
-      ...registry.bundles[0],
-      bundleId: "stale-bundle-id",
-      bundleName: "stale-bundle",
-      sourceRaw: "./stale-source",
-      sourceCanonical: join(projectRoot, "stale-source"),
-      storedSourceDir: join(storeDir, "store", "stale-bundle"),
-      members: [
-        {
-          skillName: "stale-skill",
-          linkPath: join(projectRoot, ".opencode", "skills", "stale-skill"),
-        },
-      ],
-    });
-    await writeFile(registryPath, `${JSON.stringify(registry, null, 2)}\n`, "utf8");
+    await rm(join(storeDir, "registry.json"), { force: true });
+    await expect(lstat(join(storeDir, "registry.json"))).rejects.toThrow();
 
     await runLockCommand({ tool: "all", force: true }, { cwd, homeDir, output: captureOutput().output });
 
@@ -410,7 +391,7 @@ describe("runLockCommand", () => {
     });
   });
 
-  it("excludes partially broken managed project bundles when registered members are missing", async () => {
+  it("writes explicit skill names when a managed project bundle is only partially present live", async () => {
     const base = await mkdtemp(join(tmpdir(), "skill-cli-lock-command-partial-bundle-"));
     cleanupDirs.push(base);
 
@@ -441,12 +422,11 @@ describe("runLockCommand", () => {
 
     await rm(join(projectTargetDir, "beta-skill"), { recursive: true, force: true });
 
-    await expect(
-      runLockCommand({ tool: "all", force: false }, { cwd, homeDir, output: captureOutput().output }),
-    ).rejects.toMatchObject({
-      name: "SkillCliError",
-      exitCode: ExitCode.USER_INPUT,
-      message: expect.stringMatching(/No eligible managed project bundles/),
+    await runLockCommand({ tool: "all", force: false }, { cwd, homeDir, output: captureOutput().output });
+
+    await expect(loadSkillsLockfile(join(projectRoot, "skills-lock.yaml"))).resolves.toEqual({
+      version: 2,
+      skills: [{ source: "./skills-source", name: "alpha-skill" }],
     });
   });
 });

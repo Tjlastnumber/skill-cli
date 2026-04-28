@@ -54,7 +54,7 @@ describe("runInstallCommand", () => {
       ),
     );
 
-    await runInstallCommand(
+    const result = await runInstallCommand(
       {
         source: "skills-source",
         tool: "codex",
@@ -79,23 +79,10 @@ describe("runInstallCommand", () => {
     const storedContent = await readFile(join(linkTarget, "SKILL.md"), "utf8");
     expect(storedContent).toContain("# alpha");
 
-    const registryRaw = await readFile(join(storeDir, "registry.json"), "utf8");
-    const registry = JSON.parse(registryRaw) as {
-      bundles: Array<{
-        tool: string;
-        bundleName: string;
-        members: Array<{ skillName: string }>;
-      }>;
-    };
-    expect(registry.bundles).toHaveLength(1);
-    expect(registry.bundles[0]).toMatchObject({
-      tool: "codex",
-      bundleName: "skills-source",
-    });
-    expect(registry.bundles[0]?.members).toHaveLength(1);
-    expect(registry.bundles[0]?.members[0]).toMatchObject({
-      skillName: "alpha-skill",
-    });
+    await expect(readFile(join(storeDir, "registry.json"), "utf8")).rejects.toThrow();
+    await expect(readFile(join(result.storedSourceDir, ".skill-cli-source.json"), "utf8")).resolves.toContain(
+      "skills-source",
+    );
   });
 
   it("fails on existing target when force is false", async () => {
@@ -251,10 +238,7 @@ describe("runInstallCommand", () => {
     expect(secondLinkTarget).not.toBe(firstLinkTarget);
     expect(await readFile(join(secondLinkTarget, "SKILL.md"), "utf8")).toContain("v2");
 
-    const registryRaw = await readFile(join(storeDir, "registry.json"), "utf8");
-    const registry = JSON.parse(registryRaw) as { bundles: Array<{ bundleName: string }> };
-    expect(registry.bundles).toHaveLength(1);
-    expect(registry.bundles[0]?.bundleName).toBe("skills-source");
+    await expect(readFile(join(storeDir, "registry.json"), "utf8")).rejects.toThrow();
   });
 
   it("accumulates managed installs across repeated skill selections", async () => {
@@ -324,17 +308,11 @@ describe("runInstallCommand", () => {
     expect((await lstat(join(targetDir, "alpha-skill"))).isSymbolicLink()).toBe(true);
     expect((await lstat(join(targetDir, "beta-skill"))).isSymbolicLink()).toBe(true);
 
-    const registryRaw = await readFile(join(storeDir, "registry.json"), "utf8");
-    const registry = JSON.parse(registryRaw) as {
-      bundles: Array<{ members: Array<{ skillName: string }> }>;
-    };
-    expect(registry.bundles[0]?.members).toHaveLength(2);
-    expect(registry.bundles[0]?.members).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ skillName: "alpha-skill" }),
-        expect.objectContaining({ skillName: "beta-skill" }),
-      ]),
-    );
+    const alphaTarget = await readlink(join(targetDir, "alpha-skill"));
+    const betaTarget = await readlink(join(targetDir, "beta-skill"));
+    expect(alphaTarget.startsWith(join(storeDir, "store"))).toBe(true);
+    expect(betaTarget.startsWith(join(storeDir, "store"))).toBe(true);
+    await expect(readFile(join(storeDir, "registry.json"), "utf8")).rejects.toThrow();
   });
 
   it("adds the remaining skills when later installing the full source", async () => {
@@ -393,11 +371,7 @@ describe("runInstallCommand", () => {
     expect((await lstat(join(targetDir, "alpha-skill"))).isSymbolicLink()).toBe(true);
     expect((await lstat(join(targetDir, "beta-skill"))).isSymbolicLink()).toBe(true);
 
-    const registryRaw = await readFile(join(storeDir, "registry.json"), "utf8");
-    const registry = JSON.parse(registryRaw) as {
-      bundles: Array<{ members: Array<{ skillName: string }> }>;
-    };
-    expect(registry.bundles[0]?.members).toHaveLength(2);
+    await expect(readFile(join(storeDir, "registry.json"), "utf8")).rejects.toThrow();
   });
 
   it("retains surviving managed links when only part of a prior full install remains", async () => {
@@ -458,17 +432,7 @@ describe("runInstallCommand", () => {
     expect((await lstat(join(targetDir, "alpha-skill"))).isSymbolicLink()).toBe(true);
     expect((await lstat(join(targetDir, "beta-skill"))).isSymbolicLink()).toBe(true);
 
-    const registryRaw = await readFile(join(storeDir, "registry.json"), "utf8");
-    const registry = JSON.parse(registryRaw) as {
-      bundles: Array<{ members: Array<{ skillName: string }> }>;
-    };
-    expect(registry.bundles[0]?.members).toHaveLength(2);
-    expect(registry.bundles[0]?.members).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ skillName: "alpha-skill" }),
-        expect.objectContaining({ skillName: "beta-skill" }),
-      ]),
-    );
+    await expect(readFile(join(storeDir, "registry.json"), "utf8")).rejects.toThrow();
   });
 
   it("does not restore previously full-installed project skills after the project links were deleted", async () => {
@@ -515,12 +479,7 @@ describe("runInstallCommand", () => {
     expect((await lstat(join(cwd, ".opencode", "skills", "alpha-skill"))).isSymbolicLink()).toBe(true);
     await expect(lstat(join(cwd, ".opencode", "skills", "beta-skill"))).rejects.toThrow();
 
-    const registryRaw = await readFile(join(storeDir, "registry.json"), "utf8");
-    const registry = JSON.parse(registryRaw) as {
-      bundles: Array<{ members: Array<{ skillName: string }> }>;
-    };
-    expect(registry.bundles[0]?.members).toHaveLength(1);
-    expect(registry.bundles[0]?.members[0]).toMatchObject({ skillName: "alpha-skill" });
+    await expect(readFile(join(storeDir, "registry.json"), "utf8")).rejects.toThrow();
   });
 
   it("fails when a requested skill name is not found", async () => {
@@ -676,7 +635,7 @@ describe("runInstallCommand", () => {
     expect(await readFile(join(linkPath, "USER.txt"), "utf8")).toContain("keep me");
   });
 
-  it("fails conservatively when selective cleanup would touch user content from a stale managed member", async () => {
+  it("leaves user content alone when a stale member is no longer live-managed", async () => {
     const base = await mkdtemp(join(tmpdir(), "skill-cli-install-stale-user-content-"));
     cleanupDirs.push(base);
 
@@ -723,27 +682,22 @@ describe("runInstallCommand", () => {
     await mkdir(stalePath, { recursive: true });
     await writeFile(join(stalePath, "USER.txt"), "keep me\n");
 
-    await expect(
-      runInstallCommand(
-        {
-          source: "skills-source",
-          tool: "codex",
-          target: { type: "global" },
-          force: false,
-          skills: ["alpha-skill"],
-        },
-        { cwd, homeDir, output: quietOutput() },
-      ),
-    ).rejects.toThrow(/already exists/);
+    await runInstallCommand(
+      {
+        source: "skills-source",
+        tool: "codex",
+        target: { type: "global" },
+        force: false,
+        skills: ["alpha-skill"],
+      },
+      { cwd, homeDir, output: quietOutput() },
+    );
 
     expect((await lstat(stalePath)).isDirectory()).toBe(true);
     expect(await readFile(join(stalePath, "USER.txt"), "utf8")).toContain("keep me");
+    expect((await lstat(join(targetDir, "alpha-skill"))).isSymbolicLink()).toBe(true);
 
-    const registryRaw = await readFile(join(storeDir, "registry.json"), "utf8");
-    const registry = JSON.parse(registryRaw) as {
-      bundles: Array<{ members: Array<{ skillName: string }> }>;
-    };
-    expect(registry.bundles[0]?.members).toHaveLength(2);
+    await expect(readFile(join(storeDir, "registry.json"), "utf8")).rejects.toThrow();
   });
 
   it("refreshes installs after migrating a legacy registry entry without sourceSkillDir", async () => {
@@ -893,12 +847,8 @@ describe("runInstallCommand", () => {
 
     await expect(lstat(join(targetDir, "beta-skill"))).rejects.toThrow();
 
-    const registryRaw = await readFile(join(storeDir, "registry.json"), "utf8");
-    const registry = JSON.parse(registryRaw) as {
-      bundles: Array<{ members: Array<{ skillName: string }> }>;
-    };
-    expect(registry.bundles[0]?.members).toHaveLength(1);
-    expect(registry.bundles[0]?.members[0]?.skillName).toBe("alpha-skill");
+    expect((await lstat(join(targetDir, "alpha-skill"))).isSymbolicLink()).toBe(true);
+    await expect(readFile(join(storeDir, "registry.json"), "utf8")).rejects.toThrow();
   });
 
   it("reuses one stored git source across different project installs of the same default HEAD", async () => {
@@ -1002,18 +952,9 @@ describe("runInstallCommand", () => {
     expect(firstLinkTarget).toBe(secondLinkTarget);
     expect(firstLinkTarget).toBe(first.storedSourceDir + "/alpha-skill");
 
-    const registryRaw = await readFile(join(storeDir, "registry.json"), "utf8");
-    const registry = JSON.parse(registryRaw) as {
-      bundles: Array<{ targetRoot: string; cacheKey: string; storedSourceDir: string }>;
-    };
-
-    expect(registry.bundles).toHaveLength(2);
-    expect(new Set(registry.bundles.map((bundle) => bundle.targetRoot))).toEqual(
-      new Set([join(repoA, ".opencode", "skills"), join(repoB, ".opencode", "skills")]),
-    );
-    expect(new Set(registry.bundles.map((bundle) => bundle.cacheKey)).size).toBe(1);
-    expect(new Set(registry.bundles.map((bundle) => bundle.storedSourceDir))).toEqual(
-      new Set([first.storedSourceDir]),
+    await expect(readFile(join(storeDir, "registry.json"), "utf8")).rejects.toThrow();
+    await expect(readFile(join(first.storedSourceDir, ".skill-cli-source.json"), "utf8")).resolves.toContain(
+      "github.com/acme/skills",
     );
   });
 

@@ -1,15 +1,14 @@
 import { lstat, mkdtemp, rename, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { createHash } from "node:crypto";
+import { join } from "node:path";
 
 import { deriveBundleIdentityFromSourceDescriptor } from "../core/bundle/identity.js";
 import { loadConfig } from "../core/config/load.js";
 import { discoverSkills } from "../core/discovery/discover.js";
+import { scanLiveBundles } from "../core/discovery/scan-live-bundles.js";
 import { ExitCode, FilesystemError, SkillCliError, SourceError } from "../core/errors.js";
 import { isSameSkillDirectoryLink, linkSkillDirectory } from "../core/linker/link-skill.js";
 import { createOutput, type Output } from "../core/output.js";
-import { loadRegistry, upsertRegistryBundles } from "../core/registry/registry.js";
 import { fetchSource, type CommandRunner } from "../core/source/fetch.js";
 import { parseSource } from "../core/source/parse.js";
 import { persistSourceInStore } from "../core/store/persist-source.js";
@@ -42,12 +41,6 @@ export interface InstallRuntimeOptions {
 export interface InstallCommandResult {
   storedSourceDir: string;
   installedByTool: Record<string, string[]>;
-}
-
-function createBundleId(parts: { sourceKind: string; sourceCanonical: string; cacheKey: string }): string {
-  return createHash("sha256")
-    .update(`${parts.sourceKind}::${parts.sourceCanonical}::${parts.cacheKey}`)
-    .digest("hex");
 }
 
 function ensureUniqueSkillNames(skillNames: string[], toolName: string): void {
@@ -355,7 +348,6 @@ export async function runInstallCommand(
     });
 
     const storeRootDir = resolveStoreRootDir(config.storeDir, cwd, homeDir);
-    const registry = await loadRegistry(storeRootDir);
     const persisted = await persistSourceInStore({
       sourceDir: fetched.sourceDir,
       storeRootDir,
@@ -373,8 +365,6 @@ export async function runInstallCommand(
 
     const installedByTool: Record<string, string[]> = {};
     const failures: string[] = [];
-    const nowIso = new Date().toISOString();
-    const registryEntries: Parameters<typeof upsertRegistryBundles>[1] = [];
 
     for (const toolName of selectedTools) {
       const toolConfig = config.tools[toolName];
@@ -409,6 +399,14 @@ export async function runInstallCommand(
           requestedSkillNames,
           toolName,
         });
+        const live = await scanLiveBundles([
+          {
+            tool: toolName,
+            targetType: args.target.type,
+            targetRoot,
+            entryPattern: toolConfig.entryPattern,
+          },
+        ]);
         const currentBundleKey = logicalBundleKey({
           tool: toolName,
           targetType: args.target.type,
@@ -417,7 +415,7 @@ export async function runInstallCommand(
           sourceCanonical: bundleIdentity.sourceCanonical,
           bundleName: bundleIdentity.bundleName,
         });
-        const existingManagedBundle = registry.bundles.find((entry) => {
+        const existingManagedBundle = live.managedBundles.find((entry) => {
           return (
             logicalBundleKey({
               tool: entry.tool,
@@ -450,7 +448,6 @@ export async function runInstallCommand(
         ensureUniqueSkillNames(skillNames, toolName);
 
         installedByTool[toolName] = [];
-        const members: Array<{ skillName: string; linkPath: string; sourceSkillDir: string }> = [];
         const mutations: LinkMutation[] = [];
         const currentSkillNames = new Set(desiredSkills.map((skill) => skill.skillName));
         const removedManagedMembers = (existingManagedBundle?.members ?? []).filter(
@@ -509,11 +506,6 @@ export async function runInstallCommand(
             }
 
             installedByTool[toolName].push(linkPath);
-            members.push({
-              skillName: skill.skillName,
-              linkPath,
-              sourceSkillDir: skill.skillDir,
-            });
           } catch (error) {
             await rollbackLinkMutations(mutations);
             throw error;
@@ -521,34 +513,9 @@ export async function runInstallCommand(
         }
 
         await cleanupLinkMutations(mutations);
-
-        const existingInstalledAt = existingManagedBundle?.installedAt ?? nowIso;
-        registryEntries.push({
-          bundleId: createBundleId({
-            sourceKind: bundleIdentity.sourceKind,
-            sourceCanonical: bundleIdentity.sourceCanonical,
-            cacheKey: fetched.cacheKey,
-          }),
-          bundleName: bundleIdentity.bundleName,
-          tool: toolName,
-          targetType: args.target.type,
-          targetRoot,
-          sourceRaw: bundleIdentity.sourceRaw,
-          sourceKind: bundleIdentity.sourceKind,
-          sourceCanonical: bundleIdentity.sourceCanonical,
-          cacheKey: fetched.cacheKey,
-          storedSourceDir: persisted.storedSourceDir,
-          installedAt: existingInstalledAt,
-          updatedAt: nowIso,
-          members,
-        });
       } catch (error) {
         failures.push(createToolFailureMessage(toolName, error));
       }
-    }
-
-    if (registryEntries.length > 0) {
-      await upsertRegistryBundles(storeRootDir, registryEntries);
     }
 
     if (failures.length > 0) {

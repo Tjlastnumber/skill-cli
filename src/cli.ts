@@ -11,8 +11,6 @@ import { parseExplicitInstallTargetFlags, resolveInstallInputs } from "./command
 import { runListCommand } from "./commands/list.js";
 import { runLockCommand } from "./commands/lock.js";
 import { runPruneCommand } from "./commands/prune.js";
-import { runRegisterCommand } from "./commands/register.js";
-import { runRelinkCommand } from "./commands/relink.js";
 import { runRemoveCommand } from "./commands/remove.js";
 import { runSearchCommand } from "./commands/search.js";
 import type { InstallTarget } from "./commands/types.js";
@@ -176,36 +174,22 @@ export async function runCli(argv: string[] = process.argv): Promise<void> {
     });
 
   program
-    .command("register")
-    .option("--tool <tool>", "Target tool id or 'all'", "all")
-    .option("--dir <path>", "Also scan custom directory")
-    .action(async (options: { tool: string; dir?: string }) => {
-      await runRegisterCommand({ tool: options.tool, dir: options.dir });
-    });
-
-  program
     .command("doctor")
     .option("--tool <tool>", "Target tool id or 'all'", "all")
     .option("--dir <path>", "Also scan custom directory")
-    .option("--repair-registry", "Backfill registry from discovered installed skills")
-    .action(async (options: { tool: string; dir?: string; repairRegistry?: boolean }) => {
+    .action(async (options: { tool: string; dir?: string }) => {
       await runDoctorCommand({
         tool: options.tool,
         dir: options.dir,
-        repairRegistry: Boolean(options.repairRegistry),
       });
     });
 
   program
-    .command("relink")
-    .option("--tool <tool>", "Target tool id or 'all'", "all")
-    .action(async (options: { tool: string }) => {
-      await runRelinkCommand({ tool: options.tool });
+    .command("prune")
+    .option("--dir <path>", "Also protect custom directory", collectRepeatedOption, [])
+    .action(async (options: { dir?: string[] }) => {
+      await runPruneCommand({ dirs: options.dir ?? [] });
     });
-
-  program.command("prune").action(async () => {
-    await runPruneCommand();
-  });
 
   try {
     await program.parseAsync(argv);

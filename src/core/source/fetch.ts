@@ -162,7 +162,9 @@ export async function fetchSource(
     await validateLocalDirectory(descriptor.path);
     return {
       sourceDir: descriptor.path,
-      cacheKey: await createSourceSnapshotKey(descriptor.path),
+      cacheKey: await createSourceSnapshotKey(descriptor.path, {
+        provenance: resolve(descriptor.path),
+      }),
     };
   }
 

@@ -3,7 +3,6 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
 import type { InstalledSkillCandidate } from "../core/discovery/scan-installed.js";
-import type { RegistryBundleEntry } from "../core/registry/registry.js";
 import type { ToolConfig } from "../core/config/schema.js";
 import { ExitCode, SkillCliError } from "../core/errors.js";
 import { resolvePath } from "../core/path-utils.js";
@@ -106,9 +105,8 @@ export async function resolveScanTargets(options: {
   cwd: string;
   homeDir?: string;
   dir?: string;
-  registryBundles?: RegistryBundleEntry[];
 }): Promise<InstalledSkillCandidate[]> {
-  const { tool, toolConfig, cwd, homeDir = homedir(), dir, registryBundles = [] } = options;
+  const { tool, toolConfig, cwd, homeDir = homedir(), dir } = options;
   const dedup = new Set<string>();
   const targets: InstalledSkillCandidate[] = [];
 
@@ -126,19 +124,6 @@ export async function resolveScanTargets(options: {
 
   for (const target of await resolveDefaultScanTargets({ tool, toolConfig, cwd, homeDir })) {
     await addTarget(target);
-  }
-
-  for (const bundle of registryBundles) {
-    if (bundle.tool !== tool || bundle.targetType !== "dir") {
-      continue;
-    }
-
-    await addTarget({
-      tool,
-      targetType: "dir",
-      targetRoot: bundle.targetRoot,
-      entryPattern: toolConfig.entryPattern,
-    });
   }
 
   if (dir) {

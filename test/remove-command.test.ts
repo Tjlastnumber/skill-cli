@@ -1,4 +1,4 @@
-import { lstat, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -23,7 +23,7 @@ function quietOutput() {
 }
 
 describe("runRemoveCommand", () => {
-  it("removes symlink and updates registry", async () => {
+  it("removes a live managed bundle without registry lookups", async () => {
     const base = await mkdtemp(join(tmpdir(), "skill-cli-remove-"));
     cleanupDirs.push(base);
 
@@ -66,7 +66,7 @@ describe("runRemoveCommand", () => {
     const linkPath = join(targetDir, "alpha-skill");
     expect((await lstat(linkPath)).isSymbolicLink()).toBe(true);
 
-    await runRemoveCommand(
+    const result = await runRemoveCommand(
       {
         bundleName: "skills-source",
         tool: "codex",
@@ -75,10 +75,58 @@ describe("runRemoveCommand", () => {
       { cwd, homeDir, output: quietOutput() },
     );
 
+    expect(result.removedBundles).toBe(1);
+    expect(result.removedLinkPaths).toHaveLength(1);
     await expect(lstat(linkPath)).rejects.toThrow();
+  });
 
-    const registryRaw = await readFile(join(storeDir, "registry.json"), "utf8");
-    const registry = JSON.parse(registryRaw) as { bundles: Array<{ bundleName: string }> };
-    expect(registry.bundles).toHaveLength(0);
+  it("does not remove discovered bundles that only match by derived bundle name", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-remove-discovered-"));
+    cleanupDirs.push(base);
+
+    const homeDir = join(base, "home");
+    const cwd = join(base, "workspace");
+    const targetDir = join(base, "target", "codex-global");
+    const externalBundleRoot = join(base, "external", "skills-source");
+
+    await mkdir(join(homeDir, ".config", "skill-cli"), { recursive: true });
+    await mkdir(join(targetDir), { recursive: true });
+    await mkdir(join(externalBundleRoot, "alpha-skill"), { recursive: true });
+    await mkdir(join(externalBundleRoot, "beta-skill"), { recursive: true });
+    await writeFile(join(externalBundleRoot, "alpha-skill", "SKILL.md"), "# alpha\n");
+    await writeFile(join(externalBundleRoot, "beta-skill", "SKILL.md"), "# beta\n");
+
+    await writeFile(
+      join(homeDir, ".config", "skill-cli", "config.json"),
+      JSON.stringify(
+        {
+          storeDir: join(base, "store"),
+          tools: {
+            codex: {
+              globalDir: targetDir,
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    await symlink(join(externalBundleRoot, "alpha-skill"), join(targetDir, "alpha-skill"), "dir");
+    await symlink(join(externalBundleRoot, "beta-skill"), join(targetDir, "beta-skill"), "dir");
+
+    const result = await runRemoveCommand(
+      {
+        bundleName: "skills-source",
+        tool: "codex",
+        target: { type: "global" },
+      },
+      { cwd, homeDir, output: quietOutput() },
+    );
+
+    expect(result.removedBundles).toBe(0);
+    expect(result.removedLinkPaths).toHaveLength(0);
+    expect((await lstat(join(targetDir, "alpha-skill"))).isSymbolicLink()).toBe(true);
+    expect((await lstat(join(targetDir, "beta-skill"))).isSymbolicLink()).toBe(true);
   });
 });

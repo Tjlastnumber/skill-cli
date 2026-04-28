@@ -2,11 +2,11 @@ import { rm } from "node:fs/promises";
 import { homedir } from "node:os";
 
 import { loadConfig } from "../core/config/load.js";
+import { scanLiveBundles } from "../core/discovery/scan-live-bundles.js";
 import { createOutput, type Output } from "../core/output.js";
-import { loadRegistry, removeRegistryBundles } from "../core/registry/registry.js";
 
 import type { InstallTarget } from "./types.js";
-import { resolveLinkPath, resolveStoreRootDir, resolveTargetRoot, selectTools } from "./shared.js";
+import { resolveLinkPath, resolveTargetRoot, selectTools } from "./shared.js";
 
 export interface RemoveCommandArgs {
   bundleName: string;
@@ -38,8 +38,6 @@ export async function runRemoveCommand(
 
   const config = await loadConfig({ cwd, homeDir, env });
   const selectedTools = selectTools(args.tool, Object.keys(config.tools));
-  const storeRootDir = resolveStoreRootDir(config.storeDir, cwd, homeDir);
-  const registry = await loadRegistry(storeRootDir);
 
   const removedLinkPaths: string[] = [];
   const removedBundleKeys = new Set<string>();
@@ -58,7 +56,16 @@ export async function runRemoveCommand(
       homeDir,
     });
 
-    const matchedBundles = registry.bundles.filter(
+    const live = await scanLiveBundles([
+      {
+        tool: toolName,
+        targetType: args.target.type,
+        targetRoot,
+        entryPattern: toolConfig.entryPattern,
+      },
+    ]);
+
+    const matchedBundles = live.managedBundles.filter(
       (bundle) =>
         bundle.tool === toolName &&
         bundle.targetRoot === targetRoot &&
@@ -77,20 +84,13 @@ export async function runRemoveCommand(
     }
   }
 
-  const removedFromRegistry = await removeRegistryBundles(
-    storeRootDir,
-    (entry) => removedBundleKeys.has(`${entry.tool}::${entry.targetRoot}::${entry.bundleId}`),
-  );
-
   output.info(
-    `Removed ${removedBundleKeys.size} bundle(s), ${removedLinkPaths.length} link target(s), ${removedFromRegistry.removedCount} registry entr${
-      removedFromRegistry.removedCount === 1 ? "y" : "ies"
-    }`,
+    `Removed ${removedBundleKeys.size} bundle(s), ${removedLinkPaths.length} link target(s), 0 registry entries`,
   );
 
   return {
     removedBundles: removedBundleKeys.size,
     removedLinkPaths,
-    removedRegistryEntries: removedFromRegistry.removedCount,
+    removedRegistryEntries: 0,
   };
 }

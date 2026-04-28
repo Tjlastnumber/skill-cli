@@ -4,7 +4,7 @@ English | [简体中文](README.zh-CN.md)
 
 `skill-cli` is a local CLI for installing and managing AI coding-agent skills across multiple tools using a shared local store and symlink-based targets.
 
-It is designed for developers who use more than one agent CLI and want a single workflow for install, list, repair, and cleanup.
+It is designed for developers who use more than one agent CLI and want a single workflow for install, list, recovery, and cleanup.
 
 ## Why this project
 
@@ -14,8 +14,8 @@ Different coding CLIs use different skill directories. Managing the same skill s
 
 - keeping one canonical local store
 - linking skills into tool directories instead of copying files
-- tracking installs with a bundle-aware local registry
-- capturing project skill sources in `skills-lock.yaml` so the same setup can be recreated across machines
+- deriving install state from live symlinked bundles
+- capturing project skill sources in `skills-lock.yaml` so the same setup can be recreated across machines as desired state
 
 ## Features
 
@@ -27,10 +27,9 @@ Different coding CLIs use different skill directories. Managing the same skill s
 - Search repository-root and nested skills from public GitHub repositories without cloning
 - Manage skills for `claude-code`, `codex`, and `opencode`
 - Install targets: `--global`, `--project`, and `--dir <path>`
-- Bundle-level registry with member tracking
-- `managed` vs `discovered` visibility in `list`
-- Registry backfill for existing installs via `register`
-- Health checks and repair flows via `doctor` and `relink`
+- `managed` vs `discovered` visibility in `list`, derived from live installed bundles
+- Project recovery and desired state via `skills-lock.yaml`
+- Health checks and project drift guidance via `doctor`
 - Store cleanup via `prune`
 
 Git installs resolve the requested branch, tag, or remote `HEAD` to a concrete commit before persisting to `~/.skills/store`, so the same repository commit is stored once and reused across projects.
@@ -111,25 +110,16 @@ Filter search results with a case-insensitive substring match against skill name
 skill search https://github.com/owner/repo --filter browser
 ```
 
-Repair registry from already installed links:
-
-```bash
-skill register --tool opencode
-skill doctor --tool opencode --repair-registry
-```
-
 ## Command reference
 
 | Command | Description |
 | --- | --- |
 | `skill search <github-repo-url> [--filter <text>]` | Search a public GitHub repository default branch for a repository-root `SKILL.md` and nested skill files without cloning; `--filter` does a case-insensitive substring match against skill name, description, and path |
 | `skill install [source] [--skill <name>]... [--tool <tool-or-all>] [one target: --global / --project / --dir <path>]` | Install one source from git/npm/local input, optionally restricting the install to specific skill names; `--project` installs with an explicit `source` auto-create or update `skills-lock.yaml`; when `source` is omitted, install all locked source groups from `skills-lock.yaml` without rewriting it |
-| `skill lock [--tool <tool-or-all>] [--output <path>] [--force]` | Manually generate or rebuild skill-level `skills-lock.yaml` v2 entries from currently installed managed project skills |
-| `skill list [--tool <tool-or-all>] [--status <all,managed,discovered>] [--expand]` | List bundles and optionally expand member skills |
+| `skill lock [--tool <tool-or-all>] [--output <path>] [--force]` | Manually generate or rebuild skill-level `skills-lock.yaml` v2 entries from currently installed live managed project skills |
+| `skill list [--tool <tool-or-all>] [--status <all,managed,discovered>] [--expand]` | List bundles and optionally expand member skills; `managed` vs `discovered` comes from the current live install scan |
 | `skill remove <bundle-name> --tool <tool-or-all> (one target: --global / --project / --dir <path>)` | Remove an installed bundle; `--project` removals auto-update the default `skills-lock.yaml` and delete it when no eligible managed project skills remain |
-| `skill register [--tool <tool-or-all>]` | Backfill registry from discovered installs |
-| `skill doctor [--tool <tool-or-all>] [--repair-registry]` | Validate install state and optionally repair registry |
-| `skill relink [--tool <tool-or-all>]` | Recreate missing or broken symlinks |
+| `skill doctor [--tool <tool-or-all>] [--dir <path>]` | Validate live install state and report project drift against `skills-lock.yaml` |
 | `skill prune` | Remove unreferenced store entries |
 
 When `skill install` runs in an interactive terminal, missing install inputs are prompted in this order: install scope first, then custom directory path when scope is `--dir`, then tool selection. Tool selection supports configured tool ids and `all`.
@@ -141,7 +131,7 @@ In non-interactive environments, missing required install inputs do not trigger 
 `skill lock` is the manual rebuild command. It writes `skills-lock.yaml` at the project root by default. It only emits skill entries from installs that are:
 
 - installed in the current project's `project` targets
-- managed by the registry
+- identified as managed in the current live project scan
 - still present and healthy in the current project scan
 
 `skill install <source> --project` automatically creates or updates the default project-root `skills-lock.yaml` after the install succeeds.
@@ -179,7 +169,7 @@ Notes:
 3. Fetch and persist into local store (default `~/.skills`)
 4. Discover skill members via tool rules (default `**/SKILL.md`)
 5. Create symlinks in target tool directories
-6. Track bundle + members in registry (`registry.json`)
+6. Derive managed vs discovered state from the current live install scan
 
 ## Supported tools and defaults
 
@@ -213,7 +203,7 @@ skill --help
 
 ## Project status
 
-Active development. Core install/list/remove/register/doctor/relink/prune flows are implemented and covered by tests.
+Active development. Core install/list/remove/lock/doctor/prune flows are implemented and covered by tests.
 
 ## Contributing
 
