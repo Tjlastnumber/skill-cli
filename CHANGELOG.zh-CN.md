@@ -7,6 +7,25 @@
 
 ## [未发布]
 
+### 新增
+
+- 新增可重复的 `skill prune --dir <path>`，使清理 store 时可以显式保护仍在使用的自定义目录安装。
+
+### 变更
+
+- 不再维护中心化 `registry.json`，改为通过当前 live 软链接扫描结果和项目 `skills-lock.yaml` 推导 `managed` / `discovered` 安装状态。
+- 扩展 `doctor`，使其同时检查 live 安装状态、对照 `skills-lock.yaml` 的项目漂移，并显式提示 managed project bundle 的 source provenance 问题。
+
+### 移除
+
+- 移除 `skill register`、`skill relink` 和 `doctor --repair-registry`。
+- 移除 install、list、remove、doctor、lock、prune 正常工作流中的中心化 registry 持久化依赖。
+
+### 修复
+
+- 修复两个不同本地 source 目录内容完全相同时会共享 provenance 的问题，确保本地 source 身份保持独立。
+- 修复 managed project bundle 仍存在但 source provenance 不可恢复时，`skill lock` 和自动项目锁文件同步会静默清空锁文件的问题。
+
 ## [0.5.0] - 2026-04-28
 
 ### 新增

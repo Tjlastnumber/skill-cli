@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add repeatable `skill prune --dir <path>` support so store cleanup can preserve active custom-directory installs.
+
+### Changed
+
+- Derive managed and discovered install state from live symlink scans plus project `skills-lock.yaml` instead of maintaining a central `registry.json`.
+- Expand `doctor` to validate live install state, compare current project installs against `skills-lock.yaml`, and surface managed project bundle provenance problems.
+
+### Removed
+
+- Remove `skill register`, `skill relink`, and `doctor --repair-registry`.
+- Remove central registry-backed install-state persistence from normal install, list, remove, doctor, lock, and prune workflows.
+
+### Fixed
+
+- Keep local-source provenance distinct even when two different local source directories have identical contents.
+- Stop `skill lock` and automatic project lockfile sync from silently clearing lockfiles when managed project bundles still exist but their source provenance is no longer recoverable.
+
 ## [0.5.0] - 2026-04-28
 
 ### Added

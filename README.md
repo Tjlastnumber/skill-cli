@@ -29,8 +29,8 @@ Different coding CLIs use different skill directories. Managing the same skill s
 - Install targets: `--global`, `--project`, and `--dir <path>`
 - `managed` vs `discovered` visibility in `list`, derived from live installed bundles
 - Project recovery and desired state via `skills-lock.yaml`
-- Health checks and project drift guidance via `doctor`
-- Store cleanup via `prune`
+- Health checks, project drift guidance, and provenance warnings via `doctor`
+- Store cleanup via `prune`, including repeatable `--dir <path>` protection for active custom installs
 
 Git installs resolve the requested branch, tag, or remote `HEAD` to a concrete commit before persisting to `~/.skills/store`, so the same repository commit is stored once and reused across projects.
 
@@ -119,8 +119,8 @@ skill search https://github.com/owner/repo --filter browser
 | `skill lock [--tool <tool-or-all>] [--output <path>] [--force]` | Manually generate or rebuild skill-level `skills-lock.yaml` v2 entries from currently installed live managed project skills |
 | `skill list [--tool <tool-or-all>] [--status <all,managed,discovered>] [--expand]` | List bundles and optionally expand member skills; `managed` vs `discovered` comes from the current live install scan |
 | `skill remove <bundle-name> --tool <tool-or-all> (one target: --global / --project / --dir <path>)` | Remove an installed bundle; `--project` removals auto-update the default `skills-lock.yaml` and delete it when no eligible managed project skills remain |
-| `skill doctor [--tool <tool-or-all>] [--dir <path>]` | Validate live install state and report project drift against `skills-lock.yaml` |
-| `skill prune` | Remove unreferenced store entries |
+| `skill doctor [--tool <tool-or-all>] [--dir <path>]` | Validate live install state, report project drift against `skills-lock.yaml`, and warn when managed project bundle provenance can no longer be resolved |
+| `skill prune [--dir <path>]...` | Remove unreferenced store entries; repeat `--dir` to protect active custom-directory installs during cleanup |
 
 When `skill install` runs in an interactive terminal, missing install inputs are prompted in this order: install scope first, then custom directory path when scope is `--dir`, then tool selection. Tool selection supports configured tool ids and `all`.
 
@@ -161,6 +161,7 @@ Notes:
 - generated local sources must live inside the project root so they can be written as project-relative paths
 - relative sources in `skills-lock.yaml` are resolved from the project root, not the nested shell cwd
 - when no eligible managed project skills remain, `skill lock` fails in manual mode, while automatic project sync removes the default lockfile if present and otherwise leaves no file behind
+- when managed project bundles still exist but their source provenance is no longer recoverable, `skill lock` and automatic project sync fail instead of silently rewriting or deleting the lockfile; `skill doctor` reports those provenance problems explicitly
 
 ## How it works
 

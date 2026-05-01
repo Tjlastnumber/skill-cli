@@ -29,8 +29,8 @@
 - 支持安装目标：`--global`、`--project`、`--dir <path>`
 - `list` 中的 `managed` / `discovered` 来源于当前 live 扫描结果
 - 项目级期望状态与恢复路径来自 `skills-lock.yaml`
-- `doctor` 支持检测 live 安装状态与项目漂移
-- `prune` 支持清理未引用的 store 缓存
+- `doctor` 支持检测 live 安装状态、项目漂移和 source provenance 问题
+- `prune` 支持清理未引用的 store 缓存，并可用可重复的 `--dir <path>` 保护仍在使用的自定义目录安装
 
 `git` 安装会先把请求的 branch、tag 或远端 `HEAD` 解析到具体 commit，再写入 `~/.skills/store`，因此同一个仓库的同一个 commit 只会存一份，可被不同项目复用。
 
@@ -119,8 +119,8 @@ skill search https://github.com/owner/repo --filter browser
 | `skill lock [--tool <tool-or-all>] [--output <path>] [--force]` | 根据当前项目中 live 扫描识别出的 managed project skills 手动生成或重建 skill 级 `skills-lock.yaml` v2 |
 | `skill list [--tool <tool-or-all>] [--status <all,managed,discovered>] [--expand]` | 查看 bundle 列表，并可展开成员 skill；`managed` / `discovered` 来源于当前 live 扫描 |
 | `skill remove <bundle-name> --tool <tool-or-all>（三选一目标：--global / --project / --dir <path>）` | 删除已安装 bundle；若为 `--project` 删除，则会自动更新默认 `skills-lock.yaml`，并在没有符合条件的 managed project skills 时删除它 |
-| `skill doctor [--tool <tool-or-all>] [--dir <path>]` | 检查当前 live 安装状态，并对照 `skills-lock.yaml` 报告项目漂移 |
-| `skill prune` | 清理未引用的 store 缓存 |
+| `skill doctor [--tool <tool-or-all>] [--dir <path>]` | 检查当前 live 安装状态，对照 `skills-lock.yaml` 报告项目漂移，并提示无法恢复 source provenance 的 managed project bundle |
+| `skill prune [--dir <path>]...` | 清理未引用的 store 缓存；可重复传入 `--dir`，在清理时保护仍在使用的自定义目录安装 |
 
 当 `skill install` 在交互式终端中运行且缺少安装输入时，会按以下顺序提示：先选择安装范围；如果范围是 `--dir`，再输入自定义目录路径；最后选择工具。工具选择支持已配置的工具 id 和 `all`。
 
@@ -161,6 +161,7 @@ skills:
 - 自动生成的本地 source 必须位于项目根目录内，才能被写成项目相对路径
 - `skills-lock.yaml` 中的相对 source 会以项目根目录为基准解析，不受你当前所在子目录影响
 - 当不存在符合条件的 managed project skills 时，`skill lock` 在手动模式下会报错；自动项目同步则会删除现有默认锁文件，若默认锁文件本就不存在，则保持不写入
+- 当 managed project bundle 仍存在但其 source provenance 已无法恢复时，`skill lock` 与自动项目同步会直接失败，而不是静默重写或删除锁文件；`skill doctor` 会显式报告这类 provenance 问题
 
 ## 工作原理
 
