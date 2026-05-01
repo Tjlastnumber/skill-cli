@@ -1,0 +1,4 @@
+version: 2
+skills:
+  - source: https://github.com/obra/superpowers#6efe32c9e2dd002d0c394e861e0529675d1ab32e
+    name: "*"
