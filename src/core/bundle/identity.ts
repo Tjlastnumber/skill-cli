@@ -17,6 +17,7 @@ export interface BundleIdentity {
 export interface StoredBundleIdentity extends BundleIdentity {
   groupingCacheKey?: string;
   logicalStoredSourceDir?: string;
+  physicalStoredSourceDir?: string;
 }
 
 function normalizeGitSource(rawInput: string): { canonical: string; bundleName: string } | undefined {
@@ -102,6 +103,7 @@ export async function inferBundleIdentityFromStoredSource(options: {
         sourceRaw: metadata.sourceRaw,
         sourceCanonical: metadata.sourceCanonical,
         groupingCacheKey: metadata.sourceCacheKey,
+        physicalStoredSourceDir: options.storedSourceDir,
       };
     }
 
@@ -112,6 +114,7 @@ export async function inferBundleIdentityFromStoredSource(options: {
         sourceRaw: metadata.sourceRaw,
         sourceCanonical: metadata.sourceCanonical,
         groupingCacheKey: metadata.cacheKey,
+        physicalStoredSourceDir: options.storedSourceDir,
       };
     }
 
@@ -121,6 +124,7 @@ export async function inferBundleIdentityFromStoredSource(options: {
       sourceRaw: metadata.sourceRaw,
       sourceCanonical: metadata.sourceCanonical,
       groupingCacheKey: metadata.sourceCacheKey,
+      physicalStoredSourceDir: options.storedSourceDir,
     };
   }
 

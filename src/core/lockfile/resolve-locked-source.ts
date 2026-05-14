@@ -29,10 +29,21 @@ function invalidBundleError(message: string, cause?: unknown): SkillCliError {
   return new SkillCliError(message, ExitCode.USER_INPUT, undefined, cause);
 }
 
+function usesManifestBackedLogicalSourceGroup(bundle: {
+  storedSourceDir: string;
+  members?: Array<{ sourceSkillDir?: string }>;
+}): boolean {
+  return (bundle.members ?? []).some((member) => {
+    if (!member.sourceSkillDir) {
+      return false;
+    }
+
+    return member.sourceSkillDir === bundle.storedSourceDir || !member.sourceSkillDir.startsWith(`${bundle.storedSourceDir}/`);
+  });
+}
+
 async function readBundleManifest(bundle: LockedSourceBundle) {
-  const usesLogicalSourceGroup = (bundle.members ?? []).some(
-    (member) => member.sourceSkillDir && member.sourceSkillDir !== bundle.storedSourceDir,
-  );
+  const usesLogicalSourceGroup = usesManifestBackedLogicalSourceGroup(bundle);
 
   const memberDirs = new Set<string>();
 

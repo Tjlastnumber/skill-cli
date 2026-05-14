@@ -254,4 +254,48 @@ describe("resolveLockedSourceForBundle", () => {
       message: expect.stringMatching(/Unsupported bundle source kind/),
     });
   });
+
+  it("resolves a legacy local source-root bundle without source manifest metadata", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-lockfile-resolve-legacy-local-"));
+    cleanupDirs.push(base);
+
+    const projectRoot = join(base, "repo");
+    const cwd = join(projectRoot, "packages", "app");
+    const storedSourceDir = join(base, "store", "bundle");
+    const sourceCanonical = join(projectRoot, "skills", "bundle");
+
+    await mkdir(join(projectRoot, ".git"), { recursive: true });
+    await mkdir(cwd, { recursive: true });
+    await mkdir(sourceCanonical, { recursive: true });
+    await mkdir(join(storedSourceDir, "alpha-skill"), { recursive: true });
+    await writeFile(join(storedSourceDir, "alpha-skill", "SKILL.md"), "# alpha\n");
+    await writeFile(
+      join(storedSourceDir, ".skill-cli-source.json"),
+      `${JSON.stringify(
+        {
+          version: 1,
+          bundleName: "bundle",
+          sourceKind: "local",
+          sourceRaw: "./skills/bundle",
+          sourceCanonical,
+          cacheKey: "c".repeat(64),
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    await expect(
+      resolveLockedSourceForBundle({
+        cwd,
+        bundle: {
+          sourceKind: "local",
+          sourceRaw: "./skills/bundle",
+          sourceCanonical,
+          storedSourceDir,
+          members: [{ sourceSkillDir: join(storedSourceDir, "alpha-skill") }],
+        },
+      }),
+    ).resolves.toBe("./skills/bundle");
+  });
 });

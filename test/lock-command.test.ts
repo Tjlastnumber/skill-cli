@@ -470,4 +470,48 @@ describe("runLockCommand", () => {
       message: expect.stringMatching(/unresolvable|provenance/i),
     });
   });
+
+  it("creates skills-lock.yaml from a legacy source-root managed install", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-lock-command-legacy-source-root-"));
+    cleanupDirs.push(base);
+
+    const homeDir = join(base, "home");
+    const projectRoot = join(base, "repo");
+    const cwd = projectRoot;
+    const storeDir = join(base, "store");
+    const globalDir = join(base, "global-skills");
+    const storedSourceDir = join(storeDir, "store", "a".repeat(64));
+    const projectTargetDir = join(projectRoot, ".opencode", "skills");
+    const sourceCanonical = join(projectRoot, "skills-source");
+
+    await mkdir(join(projectRoot, ".git"), { recursive: true });
+    await mkdir(sourceCanonical, { recursive: true });
+    await mkdir(join(storedSourceDir, "alpha-skill"), { recursive: true });
+    await mkdir(projectTargetDir, { recursive: true });
+    await writeConfig({ homeDir, storeDir, projectDir: ".opencode/skills", globalDir });
+    await writeFile(join(storedSourceDir, "alpha-skill", "SKILL.md"), "# alpha\n");
+    await writeFile(
+      join(storedSourceDir, ".skill-cli-source.json"),
+      `${JSON.stringify(
+        {
+          version: 1,
+          bundleName: "skills-source",
+          sourceKind: "local",
+          sourceRaw: "./skills-source",
+          sourceCanonical,
+          cacheKey: "a".repeat(64),
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    await symlink(join(storedSourceDir, "alpha-skill"), join(projectTargetDir, "alpha-skill"), "dir");
+
+    await runLockCommand({ tool: "all", force: false }, { cwd, homeDir, output: captureOutput().output });
+
+    await expect(loadSkillsLockfile(join(projectRoot, "skills-lock.yaml"))).resolves.toEqual({
+      version: 2,
+      skills: [{ source: "./skills-source", name: "*" }],
+    });
+  });
 });

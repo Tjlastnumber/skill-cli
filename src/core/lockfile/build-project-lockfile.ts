@@ -62,6 +62,19 @@ function hasBrokenManagedMembersForBundle(options: {
   });
 }
 
+function usesManifestBackedLogicalSourceGroup(bundle: {
+  storedSourceDir: string;
+  members: Array<{ sourceSkillDir?: string }>;
+}): boolean {
+  return bundle.members.some((member) => {
+    if (!member.sourceSkillDir) {
+      return false;
+    }
+
+    return member.sourceSkillDir === bundle.storedSourceDir || !member.sourceSkillDir.startsWith(`${bundle.storedSourceDir}/`);
+  });
+}
+
 function ensureUniqueSkillNames(skillNames: string[], bundleName: string): void {
   const seen = new Set<string>();
   const duplicates = new Set<string>();
@@ -108,9 +121,7 @@ async function resolveManifestSkillNames(options: {
   nameStrategy: string;
   rootSkillName: string;
 }): Promise<string[]> {
-  const usesLogicalSourceGroup = options.bundle.members.some(
-    (member) => member.sourceSkillDir && member.sourceSkillDir !== options.bundle.storedSourceDir,
-  );
+  const usesLogicalSourceGroup = usesManifestBackedLogicalSourceGroup(options.bundle);
 
   const memberDirs = new Set<string>();
 
