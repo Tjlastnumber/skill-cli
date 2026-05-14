@@ -29,11 +29,11 @@ describe("runSearchCommand", () => {
       { repositoryUrl: "https://github.com/acme/skills" },
       {
         output: capture.output,
-        browser: async () => ({
+        searcher: async () => ({
           repository: {
             displayName: "acme/skills",
-            webUrl: "https://github.com/acme/skills",
-            summary: "A public collection of coding skills",
+            sourceLabel: "https://github.com/acme/skills",
+            resolvedBy: "github-api",
             defaultBranch: "main",
           },
           skills: [
@@ -77,11 +77,11 @@ describe("runSearchCommand", () => {
       },
       {
         output: capture.output,
-        browser: async () => ({
+        searcher: async () => ({
           repository: {
             displayName: "acme/skills",
-            webUrl: "https://github.com/acme/skills",
-            summary: "A public collection of coding skills",
+            sourceLabel: "https://github.com/acme/skills",
+            resolvedBy: "github-api",
             defaultBranch: "trunk",
           },
           skills: [
@@ -112,11 +112,11 @@ describe("runSearchCommand", () => {
       { repositoryUrl: "https://github.com/acme/skills" },
       {
         output: capture.output,
-        browser: async () => ({
+        searcher: async () => ({
           repository: {
             displayName: "acme/skills",
-            webUrl: "https://github.com/acme/skills",
-            summary: "A public collection of coding skills",
+            sourceLabel: "https://github.com/acme/skills",
+            resolvedBy: "github-api",
             defaultBranch: "main",
           },
           skills: [],
@@ -143,11 +143,11 @@ describe("runSearchCommand", () => {
       },
       {
         output: capture.output,
-        browser: async () => ({
+        searcher: async () => ({
           repository: {
             displayName: "acme/skills",
-            webUrl: "https://github.com/acme/skills",
-            summary: "A public collection of coding skills",
+            sourceLabel: "https://github.com/acme/skills",
+            resolvedBy: "github-api",
             defaultBranch: "main",
           },
           skills: [
@@ -167,7 +167,46 @@ describe("runSearchCommand", () => {
       "INFO:Skills: 0",
       "INFO:",
       "INFO:No skills matched filter: delta",
+      ]);
+  });
+
+  it("prints fallback notices and omits default branch when the provider does not know it", async () => {
+    const capture = captureOutput();
+
+    await runSearchCommand(
+      { repositoryUrl: "git@gitlab.example.com:org/skills.git" },
+      {
+        output: capture.output,
+        searcher: async (_source, onNotice) => {
+          onNotice("GitHub API search unavailable, falling back to git clone");
+          return {
+            repository: {
+              displayName: "org/skills",
+              sourceLabel: "git@gitlab.example.com:org/skills.git",
+              resolvedBy: "git-clone",
+            },
+            skills: [
+              {
+                skillName: "reviewer",
+                description: "Reviews changes",
+                path: "skills/reviewer/SKILL.md",
+              },
+            ],
+          };
+        },
+      },
+    );
+
+    expect(capture.logs).toEqual([
+      "INFO:GitHub API search unavailable, falling back to git clone",
+      "INFO:Repository: org/skills",
+      "INFO:Skills: 1",
+      "INFO:",
+      "INFO:  reviewer",
+      "INFO:    description: Reviews changes",
+      "INFO:    path: skills/reviewer/SKILL.md",
     ]);
+    expect(capture.logs).not.toContain("INFO:Default branch: undefined");
   });
 });
 
@@ -178,8 +217,8 @@ describe("runCli search", () => {
       .mockResolvedValue({
         repository: {
           displayName: "acme/skills",
-          webUrl: "https://github.com/acme/skills",
-          summary: "A public collection of coding skills",
+          sourceLabel: "https://github.com/acme/skills",
+          resolvedBy: "github-api",
           defaultBranch: "main",
         },
         skills: [],
@@ -194,6 +233,26 @@ describe("runCli search", () => {
     });
   });
 
+  it("passes the raw search source through from the CLI", async () => {
+    const runSearchCommandSpy = vi.spyOn(searchCommandModule, "runSearchCommand").mockResolvedValue({
+      repository: {
+        displayName: "acme/skills",
+        sourceLabel: "git@github.com:acme/skills.git",
+        resolvedBy: "github-api",
+        defaultBranch: "main",
+      },
+      skills: [],
+    });
+
+    await runCli(["node", "skill", "search", "git@github.com:acme/skills.git", "--filter", "beta"]);
+
+    expect(runSearchCommandSpy).toHaveBeenCalledTimes(1);
+    expect(runSearchCommandSpy).toHaveBeenCalledWith({
+      repositoryUrl: "git@github.com:acme/skills.git",
+      filter: "beta",
+    });
+  });
+
   it("does not register the old browse command", async () => {
     const stderrWriteSpy = vi.spyOn(process.stderr, "write").mockReturnValue(true);
     const runSearchCommandSpy = vi
@@ -201,8 +260,8 @@ describe("runCli search", () => {
       .mockResolvedValue({
         repository: {
           displayName: "acme/skills",
-          webUrl: "https://github.com/acme/skills",
-          summary: "A public collection of coding skills",
+          sourceLabel: "https://github.com/acme/skills",
+          resolvedBy: "github-api",
           defaultBranch: "main",
         },
         skills: [],

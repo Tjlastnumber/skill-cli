@@ -58,7 +58,7 @@ export async function runCli(argv: string[] = process.argv): Promise<void> {
 
   program
     .command("search")
-    .argument("<github-repo-url>", "Public GitHub repository root URL")
+    .argument("<source>", "Repo-level GitHub or git source")
     .option("--filter <text>", "Filter skills by name, description, or path")
     .action(async (repositoryUrl: string, options: { filter?: string }) => {
       await runSearchCommand({ repositoryUrl, filter: options.filter });
