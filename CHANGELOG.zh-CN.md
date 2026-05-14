@@ -27,6 +27,10 @@
 - 扩展 `install`，新增损坏软链接修复、多 bundle 安全校验和重安装时自动修复损坏 store 条目。
 - 移除对 `~/.skills/sources/**/` 运行时目录层的依赖，最终收敛为 per-skill store 条目加全局 source manifest 的受管理状态模型。
 
+### 修复
+
+- 恢复旧 source-root 安装布局的兼容性，使仍使用 v1 source metadata 的老安装也能继续执行 `skill lock`、自动项目锁文件同步和 `doctor` 检查。
+
 ## [0.6.0] - 2026-05-01
 
 ### 新增

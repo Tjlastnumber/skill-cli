@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Expand `install` to heal broken symlinks, validate multi-bundle safety, and repair corrupted store entries on re-install.
 - Remove the runtime dependency on `~/.skills/sources/**/`, leaving per-skill store entries plus global source manifests as the canonical managed-state model.
 
+### Fixed
+
+- Restore `skill lock`, automatic project lockfile sync, and `doctor` compatibility for legacy source-root installs that still use the older v1 source metadata layout.
+
 ## [0.6.0] - 2026-05-01
 
 ### Added
