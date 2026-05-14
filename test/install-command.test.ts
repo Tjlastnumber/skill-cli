@@ -80,9 +80,7 @@ describe("runInstallCommand", () => {
     expect(storedContent).toContain("# alpha");
 
     await expect(readFile(join(storeDir, "registry.json"), "utf8")).rejects.toThrow();
-    await expect(readFile(join(result.storedSourceDir, ".skill-cli-source.json"), "utf8")).resolves.toContain(
-      "skills-source",
-    );
+    await expect(readFile(result.sourceManifestPath, "utf8")).resolves.toContain("skills-source");
   });
 
   it("fails on existing target when force is false", async () => {
@@ -417,14 +415,12 @@ describe("runInstallCommand", () => {
     );
 
     expect(await readdir(join(storeDir, "store"))).toHaveLength(1);
-    expect(result.storedSourceDir.startsWith(join(storeDir, "sources"))).toBe(true);
-    await expect(readFile(join(result.storedSourceDir, ".skill-cli-source.json"), "utf8")).resolves.toContain(
-      "skills-source",
-    );
-    await expect(readFile(join(result.storedSourceDir, "source-manifest.json"), "utf8")).resolves.toContain(
+    expect(result.sourceManifestPath.startsWith(join(storeDir, "manifests"))).toBe(true);
+    expect(result.sourceManifestPath.startsWith(join(storeDir, "manifests"))).toBe(true);
+    await expect(readFile(result.sourceManifestPath, "utf8")).resolves.toContain(
       "alpha-skill",
     );
-    await expect(readFile(join(result.storedSourceDir, "source-manifest.json"), "utf8")).resolves.toContain(
+    await expect(readFile(result.sourceManifestPath, "utf8")).resolves.toContain(
       "beta-skill",
     );
   });
@@ -489,7 +485,7 @@ describe("runInstallCommand", () => {
     await expect(readFile(join(repairedStoredSkillDir, "HELPER.txt"), "utf8")).resolves.toContain("helper");
   });
 
-  it("returns a stable source-level storedSourceDir for multi-skill installs", async () => {
+  it("returns a stable sourceManifestPath for multi-skill installs", async () => {
     const base = await mkdtemp(join(tmpdir(), "skill-cli-install-stable-source-result-"));
     cleanupDirs.push(base);
 
@@ -531,11 +527,8 @@ describe("runInstallCommand", () => {
       { cwd, homeDir, output: quietOutput() },
     );
 
-    expect(result.storedSourceDir.startsWith(join(storeDir, "sources"))).toBe(true);
-    await expect(readFile(join(result.storedSourceDir, ".skill-cli-source.json"), "utf8")).resolves.toContain(
-      "skills-source",
-    );
-    await expect(readFile(join(result.storedSourceDir, "source-manifest.json"), "utf8")).resolves.toContain(
+    expect(result.sourceManifestPath.startsWith(join(storeDir, "manifests"))).toBe(true);
+    await expect(readFile(result.sourceManifestPath, "utf8")).resolves.toContain(
       "alpha-skill",
     );
   });
@@ -1088,7 +1081,7 @@ describe("runInstallCommand", () => {
       { cwd, homeDir, output: quietOutput() },
     );
 
-    const initialCacheKey = initial.storedSourceDir.split("/").pop();
+    const initialCacheKey = initial.sourceManifestPath.split("/").pop()?.replace(/\.json$/, "");
     const linkPath = join(targetDir, "alpha-skill");
     const initialLinkTarget = await readlink(linkPath);
 
@@ -1111,7 +1104,7 @@ describe("runInstallCommand", () => {
               sourceRaw: "skills-source",
               sourceKind: "local",
               cacheKey: initialCacheKey,
-              storedSourceDir: initial.storedSourceDir,
+              storedSourceDir: initial.sourceStateDir,
               installedAt: "2026-04-10T00:00:00.000Z",
               updatedAt: "2026-04-10T00:00:00.000Z",
             },
@@ -1505,18 +1498,16 @@ describe("runInstallCommand", () => {
       },
     );
 
-    expect(first.storedSourceDir).toBe(second.storedSourceDir);
+    expect(first.sourceManifestPath).toBe(second.sourceManifestPath);
     expect(await readdir(join(storeDir, "store"))).toHaveLength(1);
 
     const firstLinkTarget = await readlink(join(repoA, ".opencode", "skills", "alpha-skill"));
     const secondLinkTarget = await readlink(join(repoB, ".opencode", "skills", "alpha-skill"));
     expect(firstLinkTarget).toBe(secondLinkTarget);
-    expect(first.storedSourceDir.startsWith(join(storeDir, "sources"))).toBe(true);
+    expect(first.sourceManifestPath.startsWith(join(storeDir, "manifests"))).toBe(true);
 
     await expect(readFile(join(storeDir, "registry.json"), "utf8")).rejects.toThrow();
-    await expect(readFile(join(first.storedSourceDir, ".skill-cli-source.json"), "utf8")).resolves.toContain(
-      "github.com/acme/skills",
-    );
+    await expect(readFile(first.sourceManifestPath, "utf8")).resolves.toContain("github.com/acme/skills");
   });
 
   it("does not rewrite shared git metadata when the same commit is installed through a different raw source form", async () => {
@@ -1586,7 +1577,7 @@ describe("runInstallCommand", () => {
 
     const firstLinkTarget = await readlink(join(repoA, ".opencode", "skills", "alpha-skill"));
     const firstSkillMetadata = await readFile(join(firstLinkTarget, ".skill-cli-source.json"), "utf8");
-    const firstSourceMetadata = await readFile(join(first.storedSourceDir, ".skill-cli-source.json"), "utf8");
+    const firstSourceMetadata = await readFile(first.sourceManifestPath, "utf8");
 
     const second = await runInstallCommand(
       {
@@ -1605,10 +1596,10 @@ describe("runInstallCommand", () => {
 
     const secondLinkTarget = await readlink(join(repoB, ".opencode", "skills", "alpha-skill"));
     const secondSkillMetadata = await readFile(join(secondLinkTarget, ".skill-cli-source.json"), "utf8");
-    const secondSourceMetadata = await readFile(join(second.storedSourceDir, ".skill-cli-source.json"), "utf8");
+    const secondSourceMetadata = await readFile(second.sourceManifestPath, "utf8");
 
     expect(firstLinkTarget).toBe(secondLinkTarget);
-    expect(first.storedSourceDir).not.toBe(second.storedSourceDir);
+    expect(first.sourceManifestPath).not.toBe(second.sourceManifestPath);
     expect(firstSkillMetadata).toContain("git@github.com:acme/skills.git");
     expect(secondSkillMetadata).toContain("acme/skills");
     expect(firstSourceMetadata).toContain("git@github.com:acme/skills.git");

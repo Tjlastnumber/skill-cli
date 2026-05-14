@@ -227,4 +227,52 @@ describe("runPruneCommand", () => {
     expect(result.removedStoreEntries).toBe(0);
     await expect(lstat(orphanManifestPath)).rejects.toThrow();
   });
+
+  it("removes orphaned legacy source-state directories", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-prune-legacy-sources-"));
+    cleanupDirs.push(base);
+
+    const homeDir = join(base, "home");
+    const cwd = join(base, "workspace");
+    const sourceRoot = join(cwd, "skills-source");
+    const targetDir = join(base, "target", "codex-global");
+    const storeDir = join(base, "store");
+    const orphanSourceStateDir = join(storeDir, "sources", `${"f".repeat(64)}`);
+
+    await mkdir(join(homeDir, ".config", "skill-cli"), { recursive: true });
+    await mkdir(join(sourceRoot, "alpha-skill"), { recursive: true });
+    await writeFile(join(sourceRoot, "alpha-skill", "SKILL.md"), "# alpha\n");
+    await writeFile(
+      join(homeDir, ".config", "skill-cli", "config.json"),
+      JSON.stringify(
+        {
+          storeDir,
+          tools: {
+            codex: {
+              globalDir: targetDir,
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    await runInstallCommand(
+      {
+        source: "skills-source",
+        tool: "codex",
+        target: { type: "global" },
+        force: false,
+      },
+      { cwd, homeDir, output: quietOutput() },
+    );
+
+    await mkdir(orphanSourceStateDir, { recursive: true });
+    await writeFile(join(orphanSourceStateDir, ".skill-cli-source.json"), "{}\n");
+
+    await runPruneCommand({}, { cwd, homeDir, output: quietOutput() });
+
+    await expect(lstat(orphanSourceStateDir)).rejects.toThrow();
+  });
 });

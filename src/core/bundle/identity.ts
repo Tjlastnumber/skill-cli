@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { basename } from "node:path";
 
 import { describeGitRepository } from "../source/git-repo.js";
 import type { SourceDescriptor } from "../source/types.js";
@@ -17,20 +17,6 @@ export interface BundleIdentity {
 export interface StoredBundleIdentity extends BundleIdentity {
   groupingCacheKey?: string;
   logicalStoredSourceDir?: string;
-}
-
-function inferLogicalStoredSourceDirFromManifestPath(sourceManifestPath: string): string | undefined {
-  const manifestDir = dirname(sourceManifestPath);
-  if (basename(manifestDir) !== "manifests") {
-    return undefined;
-  }
-
-  const sourceResultKey = basename(sourceManifestPath, ".json");
-  if (!/^[0-9a-f]{64}$/i.test(sourceResultKey)) {
-    return undefined;
-  }
-
-  return join(dirname(manifestDir), "sources", sourceResultKey);
 }
 
 function normalizeGitSource(rawInput: string): { canonical: string; bundleName: string } | undefined {
@@ -116,9 +102,16 @@ export async function inferBundleIdentityFromStoredSource(options: {
         sourceRaw: metadata.sourceRaw,
         sourceCanonical: metadata.sourceCanonical,
         groupingCacheKey: metadata.sourceCacheKey,
-        logicalStoredSourceDir:
-          inferLogicalStoredSourceDirFromManifestPath(metadata.sourceManifestPath) ??
-          options.storedSourceDir,
+      };
+    }
+
+    if (metadata.version === 1) {
+      return {
+        bundleName: metadata.bundleName,
+        sourceKind: metadata.sourceKind,
+        sourceRaw: metadata.sourceRaw,
+        sourceCanonical: metadata.sourceCanonical,
+        groupingCacheKey: metadata.cacheKey,
       };
     }
 
@@ -127,8 +120,7 @@ export async function inferBundleIdentityFromStoredSource(options: {
       sourceKind: metadata.sourceKind,
       sourceRaw: metadata.sourceRaw,
       sourceCanonical: metadata.sourceCanonical,
-      groupingCacheKey: metadata.cacheKey,
-      logicalStoredSourceDir: options.storedSourceDir,
+      groupingCacheKey: metadata.sourceCacheKey,
     };
   }
 

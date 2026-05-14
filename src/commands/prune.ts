@@ -120,8 +120,9 @@ export async function runPruneCommand(
 
   const storeEntriesDir = join(storeRootDir, "store");
   const manifestsDir = join(storeRootDir, "manifests");
+  const sourcesDir = join(storeRootDir, "sources");
 
-  if (!(await pathExists(storeEntriesDir)) && !(await pathExists(manifestsDir))) {
+  if (!(await pathExists(storeEntriesDir)) && !(await pathExists(manifestsDir)) && !(await pathExists(sourcesDir))) {
     output.info("Prune summary: removed=0 kept=0 reclaimed=0B");
     return {
       removedStoreEntries: 0,
@@ -169,6 +170,20 @@ export async function runPruneCommand(
 
       reclaimedBytes += await directorySize(manifestPath);
       await rm(manifestPath, { force: true });
+    }
+  }
+
+  if (await pathExists(sourcesDir)) {
+    const sourceEntries = await readdir(sourcesDir, { withFileTypes: true });
+
+    for (const entry of sourceEntries) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+
+      const sourceEntryPath = join(sourcesDir, entry.name);
+      reclaimedBytes += await directorySize(sourceEntryPath);
+      await rm(sourceEntryPath, { recursive: true, force: true });
     }
   }
 

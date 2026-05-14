@@ -112,34 +112,6 @@ async function resolveManifestSkillNames(options: {
     (member) => member.sourceSkillDir && member.sourceSkillDir !== options.bundle.storedSourceDir,
   );
 
-  if (options.bundle.storedSourceDir !== "unknown") {
-    const sourceLevelMetadata = await readSourceMetadata(options.bundle.storedSourceDir);
-    if (sourceLevelMetadata) {
-      const sourceLevelManifestPath =
-        sourceLevelMetadata.version === 2
-          ? sourceLevelMetadata.sourceManifestPath
-          : `${options.bundle.storedSourceDir}/source-manifest.json`;
-      const sourceLevelManifest = await readSourceManifest(sourceLevelManifestPath);
-      if (!sourceLevelManifest) {
-        throw new SkillCliError(
-          `Cannot generate a project lockfile: unresolvable source manifest for '${options.rootSkillName}'`,
-          ExitCode.USER_INPUT,
-          "Reinstall the project skills to refresh the stored source manifest",
-        );
-      }
-
-      return sourceLevelManifest.skills.map((skill) => skill.skillName);
-    }
-
-    if (usesLogicalSourceGroup) {
-      throw new SkillCliError(
-        `Cannot generate a project lockfile: unresolvable source manifest for '${options.rootSkillName}'`,
-        ExitCode.USER_INPUT,
-        "Reinstall the project skills to refresh the stored source manifest",
-      );
-    }
-  }
-
   const memberDirs = new Set<string>();
 
   for (const member of options.bundle.members) {
@@ -164,6 +136,14 @@ async function resolveManifestSkillNames(options: {
     }
 
     return manifest.skills.map((skill) => skill.skillName);
+  }
+
+  if (usesLogicalSourceGroup) {
+    throw new SkillCliError(
+      `Cannot generate a project lockfile: unresolvable source manifest for '${options.rootSkillName}'`,
+      ExitCode.USER_INPUT,
+      "Reinstall the project skills to refresh the stored source manifest",
+    );
   }
 
   return (

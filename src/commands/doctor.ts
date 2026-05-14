@@ -98,26 +98,6 @@ async function resolveInstalledSourceSkillNames(options: {
     (member) => member.sourceSkillDir && member.sourceSkillDir !== options.bundle.storedSourceDir,
   );
 
-  if (options.bundle.storedSourceDir !== "unknown") {
-    const sourceLevelMetadata = await readSourceMetadata(options.bundle.storedSourceDir);
-    if (sourceLevelMetadata) {
-      const sourceLevelManifestPath =
-        sourceLevelMetadata.version === 2
-          ? sourceLevelMetadata.sourceManifestPath
-          : `${options.bundle.storedSourceDir}/source-manifest.json`;
-      const sourceLevelManifest = await readSourceManifest(sourceLevelManifestPath);
-      if (!sourceLevelManifest) {
-        return undefined;
-      }
-
-      return sourceLevelManifest.skills.map((skill) => skill.skillName);
-    }
-
-    if (usesLogicalSourceGroup) {
-      return undefined;
-    }
-  }
-
   const memberDirs = new Set<string>();
 
   for (const member of options.bundle.members) {
@@ -138,6 +118,10 @@ async function resolveInstalledSourceSkillNames(options: {
     }
 
     return manifest.skills.map((skill) => skill.skillName);
+  }
+
+  if (usesLogicalSourceGroup) {
+    return undefined;
   }
 
   return (

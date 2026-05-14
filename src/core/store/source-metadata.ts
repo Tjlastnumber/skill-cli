@@ -12,6 +12,19 @@ export interface SourceMetadataV1 {
   cacheKey: string;
 }
 
+export interface SourceMetadataV3 {
+  version: 3;
+  storeEntryKind: "source";
+  bundleName: string;
+  sourceKind: "local" | "git" | "npm" | "unknown";
+  sourceRaw: string;
+  sourceCanonical: string;
+  sourceRevision: string;
+  sourceDisplayName: string;
+  sourceManifestPath: string;
+  sourceCacheKey: string;
+}
+
 export interface SourceMetadataV2 {
   version: 2;
   storeEntryKind: "skill";
@@ -28,7 +41,7 @@ export interface SourceMetadataV2 {
   sourceCacheKey: string;
 }
 
-export type SourceMetadata = SourceMetadataV1 | SourceMetadataV2;
+export type SourceMetadata = SourceMetadataV1 | SourceMetadataV2 | SourceMetadataV3;
 
 const FILE_NAME = ".skill-cli-source.json";
 
@@ -120,6 +133,33 @@ export async function readSourceMetadata(storedSourceDir: string): Promise<Sourc
         skillName: parsed.skillName,
         description: parsed.description,
         relativeSkillDir: parsed.relativeSkillDir,
+        sourceKind: parsed.sourceKind,
+        sourceRaw: parsed.sourceRaw,
+        sourceCanonical: parsed.sourceCanonical,
+        sourceRevision: parsed.sourceRevision,
+        sourceDisplayName: parsed.sourceDisplayName,
+        sourceManifestPath: parsed.sourceManifestPath,
+        sourceCacheKey: parsed.sourceCacheKey,
+      };
+    }
+
+    if (
+      parsed.version === 3 &&
+      parsed.storeEntryKind === "source" &&
+      typeof parsed.bundleName === "string" &&
+      isKnownSourceKind(parsed.sourceKind) &&
+      typeof parsed.sourceRaw === "string" &&
+      typeof parsed.sourceCanonical === "string" &&
+      typeof parsed.sourceRevision === "string" &&
+      typeof parsed.sourceDisplayName === "string" &&
+      typeof parsed.sourceManifestPath === "string" &&
+      isSafeManifestPath(parsed.sourceManifestPath) &&
+      typeof parsed.sourceCacheKey === "string"
+    ) {
+      return {
+        version: 3,
+        storeEntryKind: "source",
+        bundleName: parsed.bundleName,
         sourceKind: parsed.sourceKind,
         sourceRaw: parsed.sourceRaw,
         sourceCanonical: parsed.sourceCanonical,

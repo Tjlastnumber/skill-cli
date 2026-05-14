@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { lstat, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -277,7 +277,7 @@ describe("runDoctorCommand", () => {
       { cwd: projectRoot, homeDir, output: captureOutput().output },
     );
 
-    await rm(join(installResult.storedSourceDir, ".skill-cli-source.json"), { force: true });
+    await rm(installResult.sourceManifestPath, { force: true });
 
     const capture = captureOutput();
     const result = await runDoctorCommand({ tool: "opencode" }, { cwd: projectRoot, homeDir, output: capture.output });
@@ -313,14 +313,13 @@ describe("runDoctorCommand", () => {
       { cwd: projectRoot, homeDir, output: captureOutput().output },
     );
 
-    const manifestPath = join(installResult.storedSourceDir, "source-manifest.json");
-    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
+    const manifest = JSON.parse(await readFile(installResult.sourceManifestPath, "utf8")) as {
       sourceCanonical: string;
       sourceKind: string;
     };
     manifest.sourceKind = "local";
     manifest.sourceCanonical = "./skills-source";
-    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    await writeFile(installResult.sourceManifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 
     const capture = captureOutput();
     const result = await runDoctorCommand({ tool: "opencode" }, { cwd: projectRoot, homeDir, output: capture.output });
@@ -385,7 +384,7 @@ describe("runDoctorCommand", () => {
     );
 
     await rm(join(targetRoot, "alpha-skill"), { recursive: true, force: true });
-    await symlink(join(installResult.storedSourceDir, "missing-skill"), join(targetRoot, "alpha-skill"), "dir");
+    await symlink(join(base, "missing-skill"), join(targetRoot, "alpha-skill"), "dir");
 
     const capture = captureOutput();
     const result = await runDoctorCommand({ tool: "codex" }, { cwd, homeDir, output: capture.output });

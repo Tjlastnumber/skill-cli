@@ -201,7 +201,7 @@ describe("syncProjectLockfile", () => {
       { cwd, homeDir, output: captureOutput().output },
     );
 
-    await rm(join(installResult.storedSourceDir, ".skill-cli-source.json"), { force: true });
+    await rm(installResult.sourceManifestPath, { force: true });
 
     await expect(
       syncProjectLockfile(
@@ -245,7 +245,7 @@ describe("syncProjectLockfile", () => {
     );
 
     await writeFile(outputPath, "version: 2\nskills:\n  - source: ./skills-source\n    name: '*'\n");
-    await rm(join(installResult.storedSourceDir, ".skill-cli-source.json"), { force: true });
+    await rm(installResult.sourceManifestPath, { force: true });
 
     await expect(
       syncProjectLockfile(
@@ -294,14 +294,13 @@ describe("syncProjectLockfile", () => {
       { cwd, homeDir, output: captureOutput().output },
     );
 
-    const manifestPath = join(installResult.storedSourceDir, "source-manifest.json");
-    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
+    const manifest = JSON.parse(await readFile(installResult.sourceManifestPath, "utf8")) as {
       sourceCanonical: string;
       sourceKind: string;
     };
     manifest.sourceKind = "local";
     manifest.sourceCanonical = "./skills-source";
-    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    await writeFile(installResult.sourceManifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 
     await expect(
       syncProjectLockfile(

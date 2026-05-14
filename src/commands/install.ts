@@ -43,7 +43,7 @@ export interface InstallRuntimeOptions {
 }
 
 export interface InstallCommandResult {
-  storedSourceDir: string;
+  sourceManifestPath: string;
   installedByTool: Record<string, string[]>;
 }
 
@@ -181,10 +181,6 @@ function createSourceResultKey(parts: {
   return createHash("sha256")
     .update(`${parts.sourceKind}::${parts.sourceCanonical}::${parts.sourceRaw}::${parts.sourceCacheKey}`)
     .digest("hex");
-}
-
-function resolveStoredSourceResultDir(storeRootDir: string, sourceResultKey: string): string {
-  return join(storeRootDir, "sources", sourceResultKey);
 }
 
 async function resolveBrokenManagedMembersForBundle(options: {
@@ -463,31 +459,7 @@ export async function runInstallCommand(
       nameStrategy: "parentDir",
       rootSkillName: bundleIdentity.bundleName,
     });
-    const storedSourceDir = resolveStoredSourceResultDir(storeRootDir, sourceResultKey);
     await writeSourceManifest(sourceManifestPath, {
-      version: 1,
-      sourceKind: bundleIdentity.sourceKind === "unknown" ? "local" : bundleIdentity.sourceKind,
-      sourceRaw: bundleIdentity.sourceRaw,
-      sourceCanonical: bundleIdentity.sourceCanonical,
-      sourceRevision: fetched.cacheKey,
-      sourceDisplayName: bundleIdentity.bundleName,
-      sourceCacheKey: fetched.cacheKey,
-      skills: manifestSkills.map((skill) => ({
-        skillName: skill.skillName,
-        description: "",
-        relativeSkillDir: skill.relativeSkillDir.replace(/\\/g, "/"),
-      })),
-    });
-    await mkdir(storedSourceDir, { recursive: true });
-    await writeSourceMetadata(storedSourceDir, {
-      version: 1,
-      bundleName: bundleIdentity.bundleName,
-      sourceKind: bundleIdentity.sourceKind,
-      sourceRaw: bundleIdentity.sourceRaw,
-      sourceCanonical: bundleIdentity.sourceCanonical,
-      cacheKey: fetched.cacheKey,
-    });
-    await writeSourceManifest(join(storedSourceDir, "source-manifest.json"), {
       version: 1,
       sourceKind: bundleIdentity.sourceKind === "unknown" ? "local" : bundleIdentity.sourceKind,
       sourceRaw: bundleIdentity.sourceRaw,
@@ -731,7 +703,7 @@ export async function runInstallCommand(
     }
 
     return {
-      storedSourceDir,
+      sourceManifestPath,
       installedByTool,
     };
   } finally {

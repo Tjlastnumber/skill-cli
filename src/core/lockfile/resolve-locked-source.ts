@@ -34,37 +34,6 @@ async function readBundleManifest(bundle: LockedSourceBundle) {
     (member) => member.sourceSkillDir && member.sourceSkillDir !== bundle.storedSourceDir,
   );
 
-  if (bundle.storedSourceDir !== "unknown") {
-    const sourceLevelMetadata = await readSourceMetadata(bundle.storedSourceDir);
-    if (sourceLevelMetadata) {
-      if (sourceLevelMetadata.version === 2) {
-        const manifest = await readSourceManifest(sourceLevelMetadata.sourceManifestPath);
-        if (!manifest) {
-          throw invalidBundleError(
-            `Invalid ${bundle.sourceKind} bundle: failed to read source manifest for ${bundle.storedSourceDir}`,
-          );
-        }
-
-        return { metadata: sourceLevelMetadata, manifest };
-      }
-
-      const sourceLevelManifest = await readSourceManifest(`${bundle.storedSourceDir}/source-manifest.json`);
-      if (!sourceLevelManifest) {
-        throw invalidBundleError(
-          `Invalid ${bundle.sourceKind} bundle: failed to read source manifest for ${bundle.storedSourceDir}`,
-        );
-      }
-
-      return { metadata: sourceLevelMetadata, manifest: sourceLevelManifest };
-    }
-
-    if (usesLogicalSourceGroup) {
-      throw invalidBundleError(
-        `Invalid ${bundle.sourceKind} bundle: missing source provenance for ${bundle.storedSourceDir}`,
-      );
-    }
-  }
-
   const memberDirs = new Set<string>();
 
   for (const member of bundle.members ?? []) {
@@ -87,6 +56,12 @@ async function readBundleManifest(bundle: LockedSourceBundle) {
     }
 
     return { metadata, manifest };
+  }
+
+  if (usesLogicalSourceGroup) {
+    throw invalidBundleError(
+      `Invalid ${bundle.sourceKind} bundle: missing source provenance for ${bundle.storedSourceDir}`,
+    );
   }
 
   return undefined;
