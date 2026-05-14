@@ -1,5 +1,6 @@
-import { browseRepositorySkills, type BrowseRepositorySkillsResult } from "../core/github/browse-repository-skills.js";
 import { createOutput, type Output } from "../core/output.js";
+import { searchSourceSkills } from "../core/search/search-source-skills.js";
+import type { SearchProviderResult, SearchSkillRecord } from "../core/search/types.js";
 
 export interface SearchCommandArgs {
   repositoryUrl: string;
@@ -8,10 +9,10 @@ export interface SearchCommandArgs {
 
 export interface SearchRuntimeOptions {
   output?: Output;
-  browser?: (repositoryUrl: string) => Promise<BrowseRepositorySkillsResult>;
+  searcher?: (source: string, onNotice: (message: string) => void) => Promise<SearchProviderResult>;
 }
 
-function matchesFilter(skill: BrowseRepositorySkillsResult["skills"][number], filter: string): boolean {
+function matchesFilter(skill: SearchSkillRecord, filter: string): boolean {
   const normalizedFilter = filter.toLowerCase();
   return [skill.skillName, skill.description, skill.path].some((value) =>
     value.toLowerCase().includes(normalizedFilter),
@@ -21,15 +22,20 @@ function matchesFilter(skill: BrowseRepositorySkillsResult["skills"][number], fi
 export async function runSearchCommand(
   args: SearchCommandArgs,
   runtime: SearchRuntimeOptions = {},
-): Promise<BrowseRepositorySkillsResult> {
+): Promise<SearchProviderResult> {
   const output = runtime.output ?? createOutput();
-  const browser = runtime.browser ?? ((repositoryUrl: string) => browseRepositorySkills(repositoryUrl));
-  const result = await browser(args.repositoryUrl);
+  const searcher =
+    runtime.searcher ??
+    ((repositoryUrl: string, onNotice: (message: string) => void) =>
+      searchSourceSkills(repositoryUrl, { onFallback: onNotice }));
+  const result = await searcher(args.repositoryUrl, (message) => output.info(message));
   const filter = args.filter?.trim();
   const skills = filter ? result.skills.filter((skill) => matchesFilter(skill, filter)) : result.skills;
 
   output.info(`Repository: ${result.repository.displayName}`);
-  output.info(`Default branch: ${result.repository.defaultBranch}`);
+  if (result.repository.defaultBranch) {
+    output.info(`Default branch: ${result.repository.defaultBranch}`);
+  }
   output.info(`Skills: ${skills.length}`);
   output.info("");
 
