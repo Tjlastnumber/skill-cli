@@ -7,6 +7,23 @@
 
 ## [未发布]
 
+### 新增
+
+- 新增 per-skill store 持久化：`--skill` 安装现在将每个选中的 skill 作为独立 store 条目保存，而非将整个 source bundle 持久化。
+- 新增 source manifest（`source-manifest.json`）作为轻量级来源记录，将 skill 条目与其原始 source 关联。
+- 新增 `skill remove --skill <name>`，可从项目或全局 store 中移除单个 skill。
+- 新增 `remove` 的 `--tool` 自动推断能力，根据当前已安装的 skills 推断目标工具，`--tool` 变为可选。
+- 新增 `remove` 中工具目标和重名 skill 的交互式选择（非交互模式下报错）。
+- 新增从 `SKILL.md` frontmatter 或正文首段提取 skill 描述的能力，用于候选列表展示。
+
+### 变更
+
+- 重新设计 `remove` 默认为 `--project` 而非必须显式指定 scope；`--tool` 现为可选。
+- 重构 managed live grouping，通过 `StoredBundleIdentity.groupingCacheKey` 将 per-skill store 条目聚合为逻辑 source group。
+- 改造 `lock`、`doctor` 及 lockfile 构建，基于 source manifest 重构 source 级视图，包括 `name: "*"` 通配重建和 broken-member 排除。
+- 改造 `prune`，在孤儿清理时同时追踪 manifest 引用和 skill 条目。
+- 扩展 `install`，新增损坏软链接修复、多 bundle 安全校验和重安装时自动修复损坏 store 条目。
+
 ## [0.6.0] - 2026-05-01
 
 ### 新增

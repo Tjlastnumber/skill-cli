@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add per-skill store persistence so `--skill` installs save each selected skill as an independent store entry rather than persisting the entire source bundle.
+- Add source manifests (`source-manifest.json`) as lightweight provenance records linking skill entries back to their origin source.
+- Add `skill remove --skill <name>` for removing a single skill from a project or global store.
+- Add `--tool` auto-inference to `remove` based on currently installed skills, making `--tool` optional.
+- Add interactive selection for ambiguous tool targets and duplicate skill names in `remove` (errors in non-interactive mode).
+- Add `skill-description` extraction from `SKILL.md` frontmatter and first body paragraph for candidate display.
+
+### Changed
+
+- Redesign `remove` to default to `--project` instead of requiring explicit scope; `--tool` is now optional.
+- Refactor managed live grouping to aggregate per-skill store entries into logical source groups via `StoredBundleIdentity.groupingCacheKey`.
+- Adapt `lock`, `doctor`, and lockfile build to reconstruct source-level views from source manifests, including `name: "*"` wildcard reconstruction and broken-member exclusion.
+- Adapt `prune` to track manifest references alongside skill entries during orphan cleanup.
+- Expand `install` to heal broken symlinks, validate multi-bundle safety, and repair corrupted store entries on re-install.
+
 ## [0.6.0] - 2026-05-01
 
 ### Added
