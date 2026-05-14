@@ -53,7 +53,7 @@ export async function runCli(argv: string[] = process.argv): Promise<void> {
   program
     .name("skill")
     .description("Install and manage local skills across coding tools")
-    .version("0.7.0")
+    .version("0.7.1")
     .exitOverride();
 
   program

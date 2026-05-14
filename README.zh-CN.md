@@ -24,6 +24,7 @@
 - 支持通过 `skill lock` 从当前项目的 managed project 安装生成 skill 级 `skills-lock.yaml` v2
 - 支持在项目级安装和删除后自动同步 `skills-lock.yaml`
 - 支持在省略 `source` 时通过 `skill install` 从 `skills-lock.yaml` 批量安装所有锁定 source
+- 支持仓库根目录单 skill source 在项目安装、锁文件同步和 `doctor` 中正常工作
 - 支持直接搜索公开 GitHub 仓库中的根目录与嵌套 skills，无需克隆
 - 支持 `claude-code`、`codex`、`opencode`
 - 支持安装目标：`--global`、`--project`、`--dir <path>`
@@ -48,7 +49,7 @@ skill --help
 
 ## 快速开始
 
-安装一个 bundle（以 OpenCode 项目级安装为例）：
+安装一个 source（以 OpenCode 项目级安装为例）：
 
 ```bash
 skill install git@github.com:obra/superpowers.git --tool opencode --project
@@ -66,6 +67,8 @@ skill install git@github.com:obra/superpowers.git --tool opencode --project --sk
 当使用 `--skill` 时，managed store 只会持久化被选中的 skill 条目，不会把整个 source 作为一个 managed store 条目写入。
 
 这类项目级安装成功后，也会自动创建或更新 `skills-lock.yaml`。
+
+无论 source 是仓库根目录 `SKILL.md`，还是包含多个嵌套 skill 目录的 bundle，这类项目级安装都支持同一套锁文件与健康检查流程。
 
 根据当前项目中已安装的 managed project 内容手动重建锁文件：
 
@@ -155,6 +158,8 @@ skill search https://github.com/owner/repo --filter browser
 当 `skill install` 省略 `source` 参数时，会从项目根目录读取 `skills-lock.yaml`，先按 `source` 分组，再按顺序安装每个 source，但不会重写该文件。
 
 `lock` 与 `doctor` 会基于 manifest 支持的 managed skill 条目重建逻辑 source group。完整 source 安装会折叠为 `name: "*"`；部分安装则保留显式 skill 名称。
+
+这套基于 manifest 的 lockfile 与 `doctor` 流程同样支持 `SKILL.md` 位于 source 根目录的单 skill source。
 
 不再兼容 lockfile v1。旧文件需要通过 `skill lock --force` 重新生成。
 

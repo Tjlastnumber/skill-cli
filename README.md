@@ -24,6 +24,7 @@ Different coding CLIs use different skill directories. Managing the same skill s
 - Generate skill-level `skills-lock.yaml` v2 from managed project installs with `skill lock`
 - Auto-sync `skills-lock.yaml` on project installs and removals
 - Install all locked sources from `skills-lock.yaml` with `skill install` when `source` is omitted
+- Support repository-root single-skill sources in project installs, lockfile sync, and `doctor`
 - Search repository-root and nested skills from public GitHub repositories without cloning
 - Manage skills for `claude-code`, `codex`, and `opencode`
 - Install targets: `--global`, `--project`, and `--dir <path>`
@@ -48,7 +49,7 @@ skill --help
 
 ## Quick start
 
-Install a bundle into your current project for OpenCode:
+Install a source into your current project for OpenCode:
 
 ```bash
 skill install git@github.com:obra/superpowers.git --tool opencode --project
@@ -66,6 +67,8 @@ Repeated installs from the same `source` accumulate named skills for the same to
 When `--skill` is used, the managed store persists only the selected skill entries, not the whole source as one managed store entry.
 
 That project install also creates or updates `skills-lock.yaml` automatically.
+
+Project installs work for both repository-root `SKILL.md` sources and bundles with nested skill directories.
 
 Rebuild the project lockfile manually from the current managed project installs:
 
@@ -155,6 +158,8 @@ In non-interactive environments, missing required install inputs do not trigger 
 `skill install` with no `source` argument reads `skills-lock.yaml` from the project root, groups entries by `source`, and installs each source sequentially, but it does not rewrite the lockfile.
 
 Lockfile generation and `doctor` reconstruct logical source groups from manifest-backed managed skill entries. Full-source installs collapse to `name: "*"`; partial installs keep explicit skill names.
+
+The same manifest-backed lockfile and `doctor` flow also supports single-skill sources whose `SKILL.md` lives at the source root.
 
 Lockfile v1 is no longer supported. Regenerate older files with `skill lock --force`.
 
