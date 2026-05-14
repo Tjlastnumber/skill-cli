@@ -175,6 +175,43 @@ describe("syncProjectLockfile", () => {
     });
   });
 
+  it("writes skills-lock.yaml for a repository-root project skill", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-project-lockfile-root-skill-"));
+    cleanupDirs.push(base);
+
+    const homeDir = join(base, "home");
+    const projectRoot = join(base, "repo");
+    const cwd = projectRoot;
+    const sourceRoot = join(projectRoot, "skills-source");
+    const storeDir = join(base, "store");
+    const globalDir = join(base, "global-skills");
+
+    await mkdir(join(projectRoot, ".git"), { recursive: true });
+    await mkdir(sourceRoot, { recursive: true });
+    await writeFile(join(sourceRoot, "SKILL.md"), "# root\n");
+    await writeConfig({ homeDir, storeDir, projectDir: ".opencode/skills", globalDir });
+
+    await runInstallCommand(
+      {
+        source: "./skills-source",
+        tool: "opencode",
+        target: { type: "project" },
+        force: false,
+      },
+      { cwd, homeDir, output: captureOutput().output },
+    );
+
+    await syncProjectLockfile(
+      { tool: "all", mode: "manual", force: true },
+      { cwd: projectRoot, homeDir, output: captureOutput().output },
+    );
+
+    await expect(loadSkillsLockfile(join(projectRoot, "skills-lock.yaml"))).resolves.toEqual({
+      version: 2,
+      skills: [{ source: "./skills-source", name: "*" }],
+    });
+  });
+
   it("fails manual sync when a store-backed project bundle has unresolvable source provenance", async () => {
     const base = await mkdtemp(join(tmpdir(), "skill-cli-project-lockfile-missing-source-metadata-"));
     cleanupDirs.push(base);
@@ -785,6 +822,50 @@ describe("syncProjectLockfile", () => {
           { source: "./codex-source", name: "*" },
           { source: "./opencode-source", name: "*" },
         ],
+      },
+    });
+  });
+
+  it("install-side auto-sync succeeds for a repository-root project skill", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-project-lockfile-auto-root-skill-"));
+    cleanupDirs.push(base);
+
+    const homeDir = join(base, "home");
+    const projectRoot = join(base, "repo");
+    const cwd = projectRoot;
+    const sourceRoot = join(projectRoot, "skills-source");
+    const storeDir = join(base, "store");
+    const globalDir = join(base, "global-skills");
+
+    await mkdir(join(projectRoot, ".git"), { recursive: true });
+    await mkdir(sourceRoot, { recursive: true });
+    await writeFile(join(sourceRoot, "SKILL.md"), "# root\n");
+    await writeConfig({ homeDir, storeDir, projectDir: ".opencode/skills", globalDir });
+
+    await runInstallCommand(
+      {
+        source: "./skills-source",
+        tool: "opencode",
+        target: { type: "project" },
+        force: false,
+      },
+      { cwd, homeDir, output: captureOutput().output },
+    );
+
+    await runAutoSyncProjectLockfile({
+      action: "install",
+      tool: "all",
+      cwd,
+      homeDir,
+      output: captureOutput().output,
+    });
+
+    await expectAutoAndManualLockfilesToMatch({
+      cwd,
+      homeDir,
+      expectedLockfile: {
+        version: 2,
+        skills: [{ source: "./skills-source", name: "*" }],
       },
     });
   });

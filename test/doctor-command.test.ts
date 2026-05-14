@@ -329,6 +329,40 @@ describe("runDoctorCommand", () => {
     expect(capture.logs.some((line) => line.includes("skill install --project"))).toBe(true);
   });
 
+  it("does not report provenance problems for a repository-root project skill", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-doctor-root-project-skill-"));
+    cleanupDirs.push(base);
+
+    const homeDir = join(base, "home");
+    const projectRoot = join(base, "repo");
+    const storeDir = join(base, "store");
+
+    await mkdir(join(projectRoot, ".git"), { recursive: true });
+    await mkdir(join(projectRoot, "skills-source"), { recursive: true });
+    await writeFile(join(projectRoot, "skills-source", "SKILL.md"), "# root\n");
+    await writeConfig({
+      homeDir,
+      storeDir,
+      projectDir: ".opencode/skills",
+      globalDir: join(base, "global"),
+    });
+    await writeFile(
+      join(projectRoot, "skills-lock.yaml"),
+      "version: 2\nskills:\n  - source: ./skills-source\n    name: '*'\n",
+    );
+
+    await runInstallCommand(
+      { source: "./skills-source", tool: "opencode", target: { type: "project" }, force: false },
+      { cwd: projectRoot, homeDir, output: captureOutput().output },
+    );
+
+    const capture = captureOutput();
+    const result = await runDoctorCommand({ tool: "opencode" }, { cwd: projectRoot, homeDir, output: capture.output });
+
+    expect(result.projectDriftCount).toBe(0);
+    expect(capture.logs.some((line) => line.toLowerCase().includes("provenance"))).toBe(false);
+  });
+
   it("does not report managed custom dir installs as discovered", async () => {
     const base = await mkdtemp(join(tmpdir(), "skill-cli-doctor-dir-"));
     cleanupDirs.push(base);

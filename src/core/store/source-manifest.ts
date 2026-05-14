@@ -29,8 +29,11 @@ function isKnownSourceKind(value: unknown): value is SourceManifest["sourceKind"
 }
 
 function isSafeRelativePath(value: string): boolean {
+  if (value === "") {
+    return true;
+  }
+
   return (
-    Boolean(value) &&
     !value.startsWith("/") &&
     !value.includes("\\") &&
     value !== "." &&

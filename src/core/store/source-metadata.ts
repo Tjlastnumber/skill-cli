@@ -50,8 +50,11 @@ function isKnownSourceKind(value: unknown): value is SourceMetadataV1["sourceKin
 }
 
 function isSafeRelativePath(value: string): boolean {
+  if (value === "") {
+    return true;
+  }
+
   return (
-    Boolean(value) &&
     !value.startsWith("/") &&
     !value.includes("\\") &&
     value !== "." &&

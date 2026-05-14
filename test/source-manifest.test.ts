@@ -64,6 +64,31 @@ describe("source manifest", () => {
     await expect(readSourceManifest(join(base, "manifest.json"))).resolves.toEqual(manifest);
   });
 
+  it("reads manifests for repository-root skills", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-source-manifest-root-skill-"));
+    cleanupDirs.push(base);
+
+    const manifest: SourceManifest = {
+      version: 1,
+      sourceKind: "git",
+      sourceRaw: "https://github.com/acme/root-skill.git",
+      sourceCanonical: "github.com/acme/root-skill",
+      sourceRevision: "0123456789abcdef0123456789abcdef01234567",
+      sourceDisplayName: "root-skill",
+      sourceCacheKey: "cache-key-root",
+      skills: [
+        {
+          skillName: "root-skill",
+          description: "Repository root skill.",
+          relativeSkillDir: "",
+        },
+      ],
+    };
+
+    await writeSourceManifest(join(base, "manifest.json"), manifest);
+    await expect(readSourceManifest(join(base, "manifest.json"))).resolves.toEqual(manifest);
+  });
+
   it("rejects manifests with malformed skill entries", async () => {
     const base = await mkdtemp(join(tmpdir(), "skill-cli-source-manifest-invalid-"));
     cleanupDirs.push(base);
@@ -166,6 +191,36 @@ describe("source manifest", () => {
       skillName: "using-superpowers",
       description: "Bootstrap OpenCode superpowers.",
       sourceManifestPath: "/tmp/manifest.json",
+    });
+  });
+
+  it("reads skill-level metadata for repository-root skills", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-source-metadata-root-skill-"));
+    cleanupDirs.push(base);
+
+    await writeSourceMetadata(base, {
+      version: 2,
+      storeEntryKind: "skill",
+      bundleName: "root-skill",
+      skillName: "root-skill",
+      description: "Repository root skill.",
+      relativeSkillDir: "",
+      sourceKind: "git",
+      sourceRaw: "https://github.com/acme/root-skill.git",
+      sourceCanonical: "github.com/acme/root-skill",
+      sourceRevision: "0123456789abcdef0123456789abcdef01234567",
+      sourceDisplayName: "root-skill",
+      sourceManifestPath: "/tmp/root-skill-manifest.json",
+      sourceCacheKey: "cache-key-root",
+    });
+
+    await expect(readSourceMetadata(base)).resolves.toMatchObject({
+      version: 2,
+      storeEntryKind: "skill",
+      bundleName: "root-skill",
+      skillName: "root-skill",
+      relativeSkillDir: "",
+      sourceManifestPath: "/tmp/root-skill-manifest.json",
     });
   });
 
