@@ -4,6 +4,7 @@ import { basename, dirname } from "node:path";
 import {
   inferBundleIdentityFromStoredSource,
   type BundleIdentity,
+  type StoredBundleIdentity,
 } from "../bundle/identity.js";
 import { parseStoredSourceFromPath } from "../store/store-path.js";
 import type { ScannedInstalledSkill } from "./scan-installed.js";
@@ -83,7 +84,7 @@ export async function groupScannedSkillsIntoBundles(
     );
   }
 
-  const identityCache = new Map<string, BundleIdentity>();
+  const identityCache = new Map<string, StoredBundleIdentity>();
   const groups = new Map<string, ScannedBundleGroup>();
 
   for (const skill of scannedSkills) {
@@ -100,7 +101,7 @@ export async function groupScannedSkillsIntoBundles(
       shouldGroupByExternalRoot ? externalBundleRoot : undefined,
     );
 
-    let identity = fallbackIdentity;
+    let identity: StoredBundleIdentity = fallbackIdentity;
     let cacheKey = "unknown";
     let storedSourceDir = sourcePath;
 
@@ -118,6 +119,9 @@ export async function groupScannedSkillsIntoBundles(
         });
         identityCache.set(storedSourceDir, identity);
       }
+
+      cacheKey = identity.groupingCacheKey ?? cacheKey;
+      storedSourceDir = identity.logicalStoredSourceDir ?? storedSourceDir;
     }
 
     const bundleId = createBundleId({

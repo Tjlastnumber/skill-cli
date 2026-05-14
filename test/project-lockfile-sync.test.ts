@@ -1,4 +1,4 @@
-import { lstat, mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { lstat, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -201,7 +201,7 @@ describe("syncProjectLockfile", () => {
       { cwd, homeDir, output: captureOutput().output },
     );
 
-    await rm(join(installResult.storedSourceDir, ".skill-cli-source.json"), { force: true });
+    await rm(installResult.sourceManifestPath, { force: true });
 
     await expect(
       syncProjectLockfile(
@@ -245,7 +245,7 @@ describe("syncProjectLockfile", () => {
     );
 
     await writeFile(outputPath, "version: 2\nskills:\n  - source: ./skills-source\n    name: '*'\n");
-    await rm(join(installResult.storedSourceDir, ".skill-cli-source.json"), { force: true });
+    await rm(installResult.sourceManifestPath, { force: true });
 
     await expect(
       syncProjectLockfile(
@@ -266,6 +266,54 @@ describe("syncProjectLockfile", () => {
       version: 2,
       skills: [{ source: "./skills-source", name: "*" }],
     });
+  });
+
+  it("fails manual sync when locked-source provenance is invalid even if manifest enumeration succeeds", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-project-lockfile-invalid-locked-source-"));
+    cleanupDirs.push(base);
+
+    const homeDir = join(base, "home");
+    const projectRoot = join(base, "repo");
+    const cwd = projectRoot;
+    const sourceRoot = join(projectRoot, "skills-source");
+    const storeDir = join(base, "store");
+    const globalDir = join(base, "global-skills");
+
+    await mkdir(join(projectRoot, ".git"), { recursive: true });
+    await mkdir(join(sourceRoot, "alpha-skill"), { recursive: true });
+    await writeFile(join(sourceRoot, "alpha-skill", "SKILL.md"), "# alpha\n");
+    await writeConfig({ homeDir, storeDir, projectDir: ".opencode/skills", globalDir });
+
+    const installResult = await runInstallCommand(
+      {
+        source: "./skills-source",
+        tool: "opencode",
+        target: { type: "project" },
+        force: false,
+      },
+      { cwd, homeDir, output: captureOutput().output },
+    );
+
+    const manifest = JSON.parse(await readFile(installResult.sourceManifestPath, "utf8")) as {
+      sourceCanonical: string;
+      sourceKind: string;
+    };
+    manifest.sourceKind = "local";
+    manifest.sourceCanonical = "./skills-source";
+    await writeFile(installResult.sourceManifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+
+    await expect(
+      syncProjectLockfile(
+        { tool: "all", mode: "manual", force: true },
+        { cwd: projectRoot, homeDir, output: captureOutput().output },
+      ),
+    ).rejects.toMatchObject({
+      name: "SkillCliError",
+      exitCode: ExitCode.USER_INPUT,
+      message: expect.stringMatching(/provenance|unresolvable/i),
+    });
+
+    await expect(lstat(join(projectRoot, "skills-lock.yaml"))).rejects.toThrow();
   });
 
   it("returns bundleCount matching the written lockfile entries for partial selections", async () => {

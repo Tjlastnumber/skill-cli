@@ -6,6 +6,8 @@ import { loadConfig } from "../core/config/load.js";
 import { scanLiveBundles } from "../core/discovery/scan-live-bundles.js";
 import { createOutput, type Output } from "../core/output.js";
 import { resolvePath } from "../core/path-utils.js";
+import { parseStoredSourceFromPath } from "../core/store/store-path.js";
+import { readSourceMetadata } from "../core/store/source-metadata.js";
 
 import { resolveScanTargets, resolveStoreRootDir } from "./shared.js";
 
@@ -24,6 +26,31 @@ export interface PruneCommandResult {
   removedStoreEntries: number;
   keptStoreEntries: number;
   reclaimedBytes: number;
+}
+
+async function collectLiveManagedStoreState(
+  live: Awaited<ReturnType<typeof scanLiveBundles>>,
+): Promise<{ liveStoreEntryKeys: Set<string>; liveManifestPaths: Set<string> }> {
+  const liveStoreEntryKeys = new Set<string>();
+  const liveManifestPaths = new Set<string>();
+
+  for (const bundle of live.managedBundles) {
+    for (const member of bundle.members) {
+      const storeInfo = member.sourceSkillDir ? parseStoredSourceFromPath(member.sourceSkillDir) : undefined;
+      if (!storeInfo) {
+        continue;
+      }
+
+      liveStoreEntryKeys.add(storeInfo.cacheKey);
+
+      const metadata = await readSourceMetadata(storeInfo.storedSourceDir);
+      if (metadata?.version === 2) {
+        liveManifestPaths.add(metadata.sourceManifestPath);
+      }
+    }
+  }
+
+  return { liveStoreEntryKeys, liveManifestPaths };
 }
 
 async function pathExists(pathValue: string): Promise<boolean> {
@@ -89,12 +116,13 @@ export async function runPruneCommand(
     )
   ).flat();
   const live = await scanLiveBundles(scanTargets);
-  const liveCacheKeys = new Set(
-    live.managedBundles.map((bundle) => bundle.cacheKey).filter((cacheKey) => cacheKey !== "unknown"),
-  );
+  const { liveStoreEntryKeys, liveManifestPaths } = await collectLiveManagedStoreState(live);
 
   const storeEntriesDir = join(storeRootDir, "store");
-  if (!(await pathExists(storeEntriesDir))) {
+  const manifestsDir = join(storeRootDir, "manifests");
+  const sourcesDir = join(storeRootDir, "sources");
+
+  if (!(await pathExists(storeEntriesDir)) && !(await pathExists(manifestsDir)) && !(await pathExists(sourcesDir))) {
     output.info("Prune summary: removed=0 kept=0 reclaimed=0B");
     return {
       removedStoreEntries: 0,
@@ -103,26 +131,60 @@ export async function runPruneCommand(
     };
   }
 
-  const entries = await readdir(storeEntriesDir, { withFileTypes: true });
-
   let removedStoreEntries = 0;
   let keptStoreEntries = 0;
   let reclaimedBytes = 0;
 
-  for (const entry of entries) {
-    if (!entry.isDirectory()) {
-      continue;
-    }
+  if (await pathExists(storeEntriesDir)) {
+    const entries = await readdir(storeEntriesDir, { withFileTypes: true });
 
-    if (liveCacheKeys.has(entry.name)) {
-      keptStoreEntries += 1;
-      continue;
-    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
 
-    const entryPath = join(storeEntriesDir, entry.name);
-    reclaimedBytes += await directorySize(entryPath);
-    await rm(entryPath, { recursive: true, force: true });
-    removedStoreEntries += 1;
+      if (liveStoreEntryKeys.has(entry.name)) {
+        keptStoreEntries += 1;
+        continue;
+      }
+
+      const entryPath = join(storeEntriesDir, entry.name);
+      reclaimedBytes += await directorySize(entryPath);
+      await rm(entryPath, { recursive: true, force: true });
+      removedStoreEntries += 1;
+    }
+  }
+
+  if (await pathExists(manifestsDir)) {
+    const manifestEntries = await readdir(manifestsDir, { withFileTypes: true });
+
+    for (const entry of manifestEntries) {
+      if (!entry.isFile()) {
+        continue;
+      }
+
+      const manifestPath = join(manifestsDir, entry.name);
+      if (liveManifestPaths.has(manifestPath)) {
+        continue;
+      }
+
+      reclaimedBytes += await directorySize(manifestPath);
+      await rm(manifestPath, { force: true });
+    }
+  }
+
+  if (await pathExists(sourcesDir)) {
+    const sourceEntries = await readdir(sourcesDir, { withFileTypes: true });
+
+    for (const entry of sourceEntries) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+
+      const sourceEntryPath = join(sourcesDir, entry.name);
+      reclaimedBytes += await directorySize(sourceEntryPath);
+      await rm(sourceEntryPath, { recursive: true, force: true });
+    }
   }
 
   output.info(

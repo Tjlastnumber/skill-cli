@@ -5,6 +5,8 @@ import { promisify } from "node:util";
 
 import { ExitCode, SkillCliError } from "../errors.js";
 import { findProjectRoot } from "../project-root.js";
+import { readSourceManifest } from "../store/source-manifest.js";
+import { readSourceMetadata } from "../store/source-metadata.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -13,6 +15,9 @@ export interface LockedSourceBundle {
   sourceRaw: string;
   sourceCanonical: string;
   storedSourceDir: string;
+  members?: Array<{
+    sourceSkillDir?: string;
+  }>;
 }
 
 export interface ResolveLockedSourceForBundleOptions {
@@ -24,7 +29,50 @@ function invalidBundleError(message: string, cause?: unknown): SkillCliError {
   return new SkillCliError(message, ExitCode.USER_INPUT, undefined, cause);
 }
 
+async function readBundleManifest(bundle: LockedSourceBundle) {
+  const usesLogicalSourceGroup = (bundle.members ?? []).some(
+    (member) => member.sourceSkillDir && member.sourceSkillDir !== bundle.storedSourceDir,
+  );
+
+  const memberDirs = new Set<string>();
+
+  for (const member of bundle.members ?? []) {
+    if (member.sourceSkillDir) {
+      memberDirs.add(member.sourceSkillDir);
+    }
+  }
+
+  for (const memberDir of memberDirs) {
+    const metadata = await readSourceMetadata(memberDir);
+    if (!metadata || metadata.version !== 2) {
+      continue;
+    }
+
+    const manifest = await readSourceManifest(metadata.sourceManifestPath);
+    if (!manifest) {
+      throw invalidBundleError(
+        `Invalid ${bundle.sourceKind} bundle: failed to read source manifest for ${memberDir}`,
+      );
+    }
+
+    return { metadata, manifest };
+  }
+
+  if (usesLogicalSourceGroup) {
+    throw invalidBundleError(
+      `Invalid ${bundle.sourceKind} bundle: missing source provenance for ${bundle.storedSourceDir}`,
+    );
+  }
+
+  return undefined;
+}
+
 async function resolveNpmSource(bundle: LockedSourceBundle): Promise<string> {
+  const manifestState = await readBundleManifest(bundle);
+  if (manifestState) {
+    return `${manifestState.manifest.sourceCanonical}@${manifestState.manifest.sourceRevision}`;
+  }
+
   const packageJsonPath = `${bundle.storedSourceDir}/package.json`;
   const raw = await readFile(packageJsonPath, "utf8").catch((error) => {
     throw invalidBundleError(`Invalid npm bundle: failed to read ${packageJsonPath}`, error);
@@ -50,6 +98,11 @@ async function resolveNpmSource(bundle: LockedSourceBundle): Promise<string> {
 }
 
 async function resolveGitSource(bundle: LockedSourceBundle): Promise<string> {
+  const manifestState = await readBundleManifest(bundle);
+  if (manifestState) {
+    return `${manifestState.manifest.sourceRaw.split("#")[0] || manifestState.manifest.sourceRaw}#${manifestState.manifest.sourceRevision}`;
+  }
+
   const { stdout } = await execFileAsync("git", ["rev-parse", "HEAD"], {
     cwd: bundle.storedSourceDir,
   }).catch((error) => {
@@ -67,7 +120,8 @@ async function resolveGitSource(bundle: LockedSourceBundle): Promise<string> {
 
 async function resolveLocalSource(options: ResolveLockedSourceForBundleOptions): Promise<string> {
   const projectRoot = await findProjectRoot(options.cwd);
-  const localPath = options.bundle.sourceCanonical;
+  const manifestState = await readBundleManifest(options.bundle);
+  const localPath = manifestState?.manifest.sourceCanonical ?? options.bundle.sourceCanonical;
 
   if (!localPath || !isAbsolute(localPath)) {
     throw invalidBundleError(`Invalid local bundle: expected absolute path, got ${options.bundle.sourceCanonical}`);

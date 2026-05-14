@@ -1,4 +1,4 @@
 version: 2
 skills:
-  - source: https://github.com/obra/superpowers#6efe32c9e2dd002d0c394e861e0529675d1ab32e
-    name: "*"
+  - source: https://github.com/harlan-zw/vue-ecosystem-skills#890ee7a1de5c5fcb848cfcff4fad6f1338cec0f571ac2965d7400096de1819e7
+    name: vueuse-core-skilld

@@ -429,4 +429,45 @@ describe("runLockCommand", () => {
       skills: [{ source: "./skills-source", name: "alpha-skill" }],
     });
   });
+
+  it("rejects lockfile generation when a managed project bundle is partially broken", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-lock-command-broken-partial-bundle-"));
+    cleanupDirs.push(base);
+
+    const homeDir = join(base, "home");
+    const projectRoot = join(base, "repo");
+    const cwd = projectRoot;
+    const sourceRoot = join(projectRoot, "skills-source");
+    const storeDir = join(base, "store");
+    const globalDir = join(base, "global-skills");
+    const projectTargetDir = join(projectRoot, ".opencode", "skills");
+
+    await mkdir(join(projectRoot, ".git"), { recursive: true });
+    await mkdir(join(sourceRoot, "alpha-skill"), { recursive: true });
+    await mkdir(join(sourceRoot, "beta-skill"), { recursive: true });
+    await writeFile(join(sourceRoot, "alpha-skill", "SKILL.md"), "# alpha\n");
+    await writeFile(join(sourceRoot, "beta-skill", "SKILL.md"), "# beta\n");
+    await writeConfig({ homeDir, storeDir, projectDir: ".opencode/skills", globalDir });
+
+    await runInstallCommand(
+      {
+        source: "./skills-source",
+        tool: "opencode",
+        target: { type: "project" },
+        force: false,
+      },
+      { cwd, homeDir, output: captureOutput().output },
+    );
+
+    await rm(join(projectTargetDir, "beta-skill"), { recursive: true, force: true });
+    await symlink(join(projectRoot, "missing-beta-skill"), join(projectTargetDir, "beta-skill"));
+
+    await expect(
+      runLockCommand({ tool: "all", force: false }, { cwd, homeDir, output: captureOutput().output }),
+    ).rejects.toMatchObject({
+      name: "SkillCliError",
+      exitCode: ExitCode.USER_INPUT,
+      message: expect.stringMatching(/unresolvable|provenance/i),
+    });
+  });
 });

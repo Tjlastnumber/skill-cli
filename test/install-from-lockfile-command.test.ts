@@ -20,7 +20,7 @@ describe("runInstallFromLockfileCommand", () => {
       ],
     });
     const runInstallCommandSpy = vi.spyOn(installCommandModule, "runInstallCommand").mockResolvedValue({
-      storedSourceDir: "/store/bundle",
+      sourceManifestPath: "/store/manifests/bundle.json",
       installedByTool: { codex: ["alpha"] },
     });
 
@@ -64,7 +64,7 @@ describe("runInstallFromLockfileCommand", () => {
       skills: [{ source: "./skills/beta", name: "*" }],
     });
     const runInstallCommandSpy = vi.spyOn(installCommandModule, "runInstallCommand").mockResolvedValue({
-      storedSourceDir: "/store/beta",
+      sourceManifestPath: "/store/manifests/beta.json",
       installedByTool: { codex: ["beta"] },
     });
 
@@ -92,7 +92,7 @@ describe("runInstallFromLockfileCommand", () => {
       skills: [{ source: "./skills/beta", name: "*" }],
     });
     const runInstallCommandSpy = vi.spyOn(installCommandModule, "runInstallCommand").mockResolvedValue({
-      storedSourceDir: "/store/beta",
+      sourceManifestPath: "/store/manifests/beta.json",
       installedByTool: { codex: ["beta"] },
     });
 
@@ -160,7 +160,7 @@ describe("runInstallFromLockfileCommand", () => {
     const output = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     const runInstallCommandSpy = vi.spyOn(installCommandModule, "runInstallCommand");
     runInstallCommandSpy
-      .mockResolvedValueOnce({ storedSourceDir: "/store/alpha", installedByTool: { codex: ["alpha"] } })
+      .mockResolvedValueOnce({ sourceManifestPath: "/store/manifests/alpha.json", installedByTool: { codex: ["alpha"] } })
       .mockRejectedValueOnce(new SkillCliError("Target already exists", ExitCode.FILESYSTEM));
 
     await expect(
@@ -191,8 +191,8 @@ describe("runInstallFromLockfileCommand", () => {
     const runInstallCommandSpy = vi.spyOn(installCommandModule, "runInstallCommand");
     runInstallCommandSpy
       .mockRejectedValueOnce(new SkillCliError("Target already exists", ExitCode.FILESYSTEM))
-      .mockResolvedValueOnce({ storedSourceDir: "/store/beta", installedByTool: { codex: ["beta"] } })
-      .mockResolvedValueOnce({ storedSourceDir: "/store/gamma", installedByTool: { codex: ["gamma"] } });
+      .mockResolvedValueOnce({ sourceManifestPath: "/store/manifests/beta.json", installedByTool: { codex: ["beta"] } })
+      .mockResolvedValueOnce({ sourceManifestPath: "/store/manifests/gamma.json", installedByTool: { codex: ["gamma"] } });
 
     await expect(
       runInstallFromLockfileCommand(

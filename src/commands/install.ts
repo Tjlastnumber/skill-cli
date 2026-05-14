@@ -1,4 +1,5 @@
-import { lstat, mkdtemp, rename, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { lstat, mkdir, mkdtemp, readdir, rename, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -11,7 +12,10 @@ import { isSameSkillDirectoryLink, linkSkillDirectory } from "../core/linker/lin
 import { createOutput, type Output } from "../core/output.js";
 import { fetchSource, type CommandRunner } from "../core/source/fetch.js";
 import { parseSource } from "../core/source/parse.js";
-import { persistSourceInStore } from "../core/store/persist-source.js";
+import { persistSkillInStore } from "../core/store/persist-skill.js";
+import { parseStoredSourceFromPath } from "../core/store/store-path.js";
+import { readSourceManifest } from "../core/store/source-manifest.js";
+import { writeSourceManifest } from "../core/store/source-manifest.js";
 import { writeSourceMetadata } from "../core/store/source-metadata.js";
 
 import type { InstallTarget } from "./types.js";
@@ -39,7 +43,7 @@ export interface InstallRuntimeOptions {
 }
 
 export interface InstallCommandResult {
-  storedSourceDir: string;
+  sourceManifestPath: string;
   installedByTool: Record<string, string[]>;
 }
 
@@ -168,6 +172,99 @@ function logicalBundleKey(parts: {
   return `${parts.tool}::${parts.targetType}::${parts.targetRoot}::${parts.sourceKind}::${parts.sourceCanonical}::${parts.bundleName}`;
 }
 
+function createSourceResultKey(parts: {
+  sourceKind: string;
+  sourceCanonical: string;
+  sourceRaw: string;
+  sourceCacheKey: string;
+}): string {
+  return createHash("sha256")
+    .update(`${parts.sourceKind}::${parts.sourceCanonical}::${parts.sourceRaw}::${parts.sourceCacheKey}`)
+    .digest("hex");
+}
+
+async function resolveBrokenManagedMembersForBundle(options: {
+  brokenEntries: Array<{
+    skillName: string;
+    tool: string;
+    targetType: InstallTarget["type"];
+    targetRoot: string;
+    sourceSkillDir?: string;
+    linkPath: string;
+  }>;
+  toolName: string;
+  targetType: InstallTarget["type"];
+  targetRoot: string;
+  storeRootDir: string;
+  sourceKind: string;
+  sourceCanonical: string;
+  bundleName: string;
+}): Promise<Array<{ skillName: string; linkPath: string; sourceSkillDir?: string }>> {
+  const candidateEntries = options.brokenEntries.filter((entry) => {
+    return (
+      entry.tool === options.toolName &&
+      entry.targetType === options.targetType &&
+      entry.targetRoot === options.targetRoot &&
+      entry.sourceSkillDir !== undefined &&
+      parseStoredSourceFromPath(entry.sourceSkillDir) !== undefined
+    );
+  });
+
+  if (candidateEntries.length === 0) {
+    return [];
+  }
+
+  const manifestDir = join(options.storeRootDir, "manifests");
+  const manifestFiles = await readdir(manifestDir).catch((error: unknown) => {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return [] as string[];
+    }
+    throw error;
+  });
+
+  const knownSkillNames = new Set<string>();
+  for (const manifestFile of manifestFiles) {
+    const manifest = await readSourceManifest(join(manifestDir, manifestFile));
+    if (!manifest) {
+      continue;
+    }
+
+    if (
+      manifest.sourceKind !== options.sourceKind ||
+      manifest.sourceCanonical !== options.sourceCanonical ||
+      manifest.sourceDisplayName !== options.bundleName
+    ) {
+      continue;
+    }
+
+    for (const skill of manifest.skills) {
+      knownSkillNames.add(skill.skillName);
+    }
+  }
+
+  return candidateEntries
+    .filter((entry) => knownSkillNames.has(entry.skillName))
+    .map((entry) => ({
+      skillName: entry.skillName,
+      linkPath: entry.linkPath,
+      sourceSkillDir: entry.sourceSkillDir,
+    }));
+}
+
+function createSkillStoreEntryKey(parts: {
+  sourceKind: string;
+  sourceCanonical: string;
+  sourceCacheKey: string;
+  relativeSkillDir: string;
+  skillName: string;
+}): string {
+  return createHash("sha256")
+    .update(
+      `${parts.sourceKind}::${parts.sourceCanonical}::${parts.sourceCacheKey}::${parts.relativeSkillDir}::${parts.skillName}`,
+    )
+    .digest("hex");
+}
+
 function resolveManagedSourceCandidates(options: {
   storedSourceDir: string;
   member: { skillName: string; sourceSkillDir?: string };
@@ -179,6 +276,7 @@ function resolveManagedSourceCandidates(options: {
   }
 
   if (options.storedSourceDir && options.storedSourceDir !== "unknown") {
+    candidates.push(options.storedSourceDir);
     candidates.push(join(options.storedSourceDir, options.member.skillName));
     candidates.push(join(options.storedSourceDir, "skills", options.member.skillName));
   }
@@ -348,21 +446,33 @@ export async function runInstallCommand(
     });
 
     const storeRootDir = resolveStoreRootDir(config.storeDir, cwd, homeDir);
-    const persisted = await persistSourceInStore({
-      sourceDir: fetched.sourceDir,
-      storeRootDir,
-      cacheKey: fetched.cacheKey,
-    });
-
-    await writeSourceMetadata(persisted.storedSourceDir, {
-      version: 1,
-      bundleName: bundleIdentity.bundleName,
+    const sourceResultKey = createSourceResultKey({
       sourceKind: bundleIdentity.sourceKind,
+      sourceCanonical: bundleIdentity.sourceCanonical,
+      sourceRaw: bundleIdentity.sourceRaw,
+      sourceCacheKey: fetched.cacheKey,
+    });
+    const sourceManifestPath = join(storeRootDir, "manifests", `${sourceResultKey}.json`);
+    const manifestSkills = await discoverSkills({
+      sourceDir: fetched.sourceDir,
+      entryPattern: "**/SKILL.md",
+      nameStrategy: "parentDir",
+      rootSkillName: bundleIdentity.bundleName,
+    });
+    await writeSourceManifest(sourceManifestPath, {
+      version: 1,
+      sourceKind: bundleIdentity.sourceKind === "unknown" ? "local" : bundleIdentity.sourceKind,
       sourceRaw: bundleIdentity.sourceRaw,
       sourceCanonical: bundleIdentity.sourceCanonical,
-      cacheKey: fetched.cacheKey,
+      sourceRevision: fetched.cacheKey,
+      sourceDisplayName: bundleIdentity.bundleName,
+      sourceCacheKey: fetched.cacheKey,
+      skills: manifestSkills.map((skill) => ({
+        skillName: skill.skillName,
+        description: "",
+        relativeSkillDir: skill.relativeSkillDir.replace(/\\/g, "/"),
+      })),
     });
-
     const installedByTool: Record<string, string[]> = {};
     const failures: string[] = [];
 
@@ -382,7 +492,7 @@ export async function runInstallCommand(
         });
 
         const discoveredSkills = await discoverSkills({
-          sourceDir: persisted.storedSourceDir,
+          sourceDir: fetched.sourceDir,
           entryPattern: toolConfig.entryPattern,
           nameStrategy: toolConfig.nameStrategy,
           rootSkillName: bundleIdentity.bundleName,
@@ -415,7 +525,7 @@ export async function runInstallCommand(
           sourceCanonical: bundleIdentity.sourceCanonical,
           bundleName: bundleIdentity.bundleName,
         });
-        const existingManagedBundle = live.managedBundles.find((entry) => {
+        const matchingManagedBundles = live.managedBundles.filter((entry) => {
           return (
             logicalBundleKey({
               tool: entry.tool,
@@ -427,15 +537,34 @@ export async function runInstallCommand(
             }) === currentBundleKey
           );
         });
+        const existingManagedMembers = matchingManagedBundles.flatMap((entry) => entry.members);
+        const brokenManagedMembers = await resolveBrokenManagedMembersForBundle({
+          brokenEntries: live.brokenEntries,
+          toolName,
+          targetType: args.target.type,
+          targetRoot,
+            storeRootDir,
+            sourceKind: bundleIdentity.sourceKind,
+            sourceCanonical: bundleIdentity.sourceCanonical,
+            bundleName: bundleIdentity.bundleName,
+          });
+        const allManagedMembers = [
+          ...existingManagedMembers,
+          ...brokenManagedMembers.map((entry) => ({
+            skillName: entry.skillName,
+            linkPath: entry.linkPath,
+            sourceSkillDir: entry.sourceSkillDir,
+          })),
+        ];
         const managedMembers = new Map(
-          (existingManagedBundle?.members ?? []).map((member) => [
+          allManagedMembers.map((member) => [
             `${member.skillName}::${member.linkPath}`,
             member,
           ]),
         );
         const installedManagedSkillNames = await resolveInstalledManagedSkillNames({
-          existingManagedMembers: existingManagedBundle?.members ?? [],
-          storedSourceDir: existingManagedBundle?.storedSourceDir ?? "unknown",
+          existingManagedMembers: allManagedMembers,
+          storedSourceDir: "unknown",
           targetRoot,
         });
         const desiredSkills = mergeManagedSkills({
@@ -450,7 +579,7 @@ export async function runInstallCommand(
         installedByTool[toolName] = [];
         const mutations: LinkMutation[] = [];
         const currentSkillNames = new Set(desiredSkills.map((skill) => skill.skillName));
-        const removedManagedMembers = (existingManagedBundle?.members ?? []).filter(
+        const removedManagedMembers = allManagedMembers.filter(
           (member) => !currentSkillNames.has(member.skillName),
         );
 
@@ -460,7 +589,7 @@ export async function runInstallCommand(
               targetLinkPath: removedMember.linkPath || resolveLinkPath(targetRoot, removedMember.skillName),
               force: args.force,
               sourceCandidates: resolveManagedSourceCandidates({
-                storedSourceDir: existingManagedBundle?.storedSourceDir ?? "unknown",
+                storedSourceDir: "unknown",
                 member: removedMember,
               }),
             });
@@ -475,8 +604,38 @@ export async function runInstallCommand(
         }
 
         for (const skill of desiredSkills) {
+          const persisted = await persistSkillInStore({
+            sourceSkillDir: skill.skillDir,
+            storeRootDir,
+            storeEntryKey: createSkillStoreEntryKey({
+              sourceKind: bundleIdentity.sourceKind,
+              sourceCanonical: bundleIdentity.sourceCanonical,
+              sourceCacheKey: fetched.cacheKey,
+              relativeSkillDir: skill.relativeSkillDir.replace(/\\/g, "/"),
+              skillName: skill.skillName,
+            }),
+          });
+          await writeSourceMetadata(persisted.storedSkillDir, {
+            version: 2,
+            storeEntryKind: "skill",
+            bundleName: bundleIdentity.bundleName,
+            skillName: skill.skillName,
+            description: "",
+            relativeSkillDir: skill.relativeSkillDir.replace(/\\/g, "/"),
+            sourceKind: bundleIdentity.sourceKind,
+            sourceRaw: bundleIdentity.sourceRaw,
+            sourceCanonical: bundleIdentity.sourceCanonical,
+            sourceRevision: fetched.cacheKey,
+            sourceDisplayName: bundleIdentity.bundleName,
+            sourceManifestPath,
+            sourceCacheKey: fetched.cacheKey,
+          });
+
           const linkPath = resolveLinkPath(targetRoot, skill.skillName);
           const existingManagedMember = managedMembers.get(`${skill.skillName}::${linkPath}`);
+          const existingBrokenManagedMember = brokenManagedMembers.find((member) => {
+            return member.skillName === skill.skillName && member.linkPath === linkPath;
+          });
           let allowManagedRefresh = false;
 
           if (existingManagedMember) {
@@ -484,7 +643,7 @@ export async function runInstallCommand(
               allowManagedRefresh = true;
             } else {
               for (const candidate of resolveManagedSourceCandidates({
-                storedSourceDir: existingManagedBundle?.storedSourceDir ?? "unknown",
+                storedSourceDir: "unknown",
                 member: existingManagedMember,
               })) {
                 if (await isSameSkillDirectoryLink(linkPath, candidate)) {
@@ -495,9 +654,13 @@ export async function runInstallCommand(
             }
           }
 
+          if (!allowManagedRefresh && existingBrokenManagedMember) {
+            allowManagedRefresh = true;
+          }
+
           try {
             const mutation = await replaceManagedLink({
-              sourceSkillDir: skill.skillDir,
+              sourceSkillDir: persisted.storedSkillDir,
               targetLinkPath: linkPath,
               force: args.force || allowManagedRefresh,
             });
@@ -540,7 +703,7 @@ export async function runInstallCommand(
     }
 
     return {
-      storedSourceDir: persisted.storedSourceDir,
+      sourceManifestPath,
       installedByTool,
     };
   } finally {

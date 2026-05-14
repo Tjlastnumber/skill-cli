@@ -14,6 +14,11 @@ export interface BundleIdentity {
   sourceCanonical: string;
 }
 
+export interface StoredBundleIdentity extends BundleIdentity {
+  groupingCacheKey?: string;
+  logicalStoredSourceDir?: string;
+}
+
 function normalizeGitSource(rawInput: string): { canonical: string; bundleName: string } | undefined {
   try {
     return describeGitRepository(rawInput);
@@ -87,14 +92,35 @@ export function deriveBundleIdentityFromSourceDescriptor(source: SourceDescripto
 export async function inferBundleIdentityFromStoredSource(options: {
   storedSourceDir: string;
   fallback: BundleIdentity;
-}): Promise<BundleIdentity> {
+}): Promise<StoredBundleIdentity> {
   const metadata = await readSourceMetadata(options.storedSourceDir);
   if (metadata) {
+    if (metadata.version === 2) {
+      return {
+        bundleName: metadata.bundleName,
+        sourceKind: metadata.sourceKind,
+        sourceRaw: metadata.sourceRaw,
+        sourceCanonical: metadata.sourceCanonical,
+        groupingCacheKey: metadata.sourceCacheKey,
+      };
+    }
+
+    if (metadata.version === 1) {
+      return {
+        bundleName: metadata.bundleName,
+        sourceKind: metadata.sourceKind,
+        sourceRaw: metadata.sourceRaw,
+        sourceCanonical: metadata.sourceCanonical,
+        groupingCacheKey: metadata.cacheKey,
+      };
+    }
+
     return {
       bundleName: metadata.bundleName,
       sourceKind: metadata.sourceKind,
       sourceRaw: metadata.sourceRaw,
       sourceCanonical: metadata.sourceCanonical,
+      groupingCacheKey: metadata.sourceCacheKey,
     };
   }
 

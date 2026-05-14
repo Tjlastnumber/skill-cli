@@ -11,6 +11,7 @@ import { parseExplicitInstallTargetFlags, resolveInstallInputs } from "./command
 import { runListCommand } from "./commands/list.js";
 import { runLockCommand } from "./commands/lock.js";
 import { runPruneCommand } from "./commands/prune.js";
+import { parseExplicitRemoveTargetFlags, resolveRemoveInputs } from "./commands/remove-inputs.js";
 import { runRemoveCommand } from "./commands/remove.js";
 import { runSearchCommand } from "./commands/search.js";
 import type { InstallTarget } from "./commands/types.js";
@@ -123,21 +124,39 @@ export async function runCli(argv: string[] = process.argv): Promise<void> {
 
   program
     .command("remove")
-    .argument("<bundle-name>", "Bundle name to remove")
-    .requiredOption("--tool <tool>", "Target tool id or 'all'")
+    .argument("[bundle-name]", "Bundle name to remove")
+    .option("--tool <tool>", "Target tool id or 'all'")
+    .option("--skill <name>", "Remove only the named installed skill")
     .option("--global", "Remove from tool global directory")
     .option("--project", "Remove from tool project directory")
     .option("--dir <path>", "Remove from custom directory")
-    .action(async (bundleName: string, options: TargetOptions & { tool: string }) => {
-      const target = parseTargetOptions(options);
-
-      await runRemoveCommand({
+    .action(async (bundleName: string | undefined, options: TargetOptions & { tool?: string; skill?: string }) => {
+      const config = await loadConfig();
+      const resolved = await resolveRemoveInputs({
         bundleName,
+        skillName: options.skill,
         tool: options.tool,
-        target,
+        target: parseExplicitRemoveTargetFlags(options),
+        output,
+        configuredTools: Object.keys(config.tools),
+        stdinIsTTY: Boolean(process.stdin.isTTY),
+        stdoutIsTTY: Boolean(process.stdout.isTTY),
       });
 
-      if (target.type === "project") {
+      if ("cancelled" in resolved) {
+        process.exitCode = 0;
+        return;
+      }
+
+      await runRemoveCommand({
+        bundleName: resolved.bundleName,
+        skillName: resolved.skillName,
+        selectedSkill: resolved.selectedSkill,
+        tool: resolved.tool,
+        target: resolved.target,
+      });
+
+      if (resolved.target.type === "project") {
         await runAutoSyncProjectLockfile({
           action: "remove",
           tool: "all",
