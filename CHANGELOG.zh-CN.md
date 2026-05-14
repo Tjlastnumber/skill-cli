@@ -7,6 +7,8 @@
 
 ## [未发布]
 
+## [0.7.0] - 2026-05-14
+
 ### 新增
 
 - 新增 per-skill store 持久化：`--skill` 安装现在将每个选中的 skill 作为独立 store 条目保存，而非将整个 source bundle 持久化。
@@ -23,6 +25,7 @@
 - 改造 `lock`、`doctor` 及 lockfile 构建，基于 source manifest 重构 source 级视图，包括 `name: "*"` 通配重建和 broken-member 排除。
 - 改造 `prune`，在孤儿清理时同时追踪 manifest 引用和 skill 条目。
 - 扩展 `install`，新增损坏软链接修复、多 bundle 安全校验和重安装时自动修复损坏 store 条目。
+- 移除对 `~/.skills/sources/**/` 运行时目录层的依赖，最终收敛为 per-skill store 条目加全局 source manifest 的受管理状态模型。
 
 ## [0.6.0] - 2026-05-01
 

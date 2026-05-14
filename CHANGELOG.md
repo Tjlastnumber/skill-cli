@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-05-14
+
 ### Added
 
 - Add per-skill store persistence so `--skill` installs save each selected skill as an independent store entry rather than persisting the entire source bundle.
@@ -23,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Adapt `lock`, `doctor`, and lockfile build to reconstruct source-level views from source manifests, including `name: "*"` wildcard reconstruction and broken-member exclusion.
 - Adapt `prune` to track manifest references alongside skill entries during orphan cleanup.
 - Expand `install` to heal broken symlinks, validate multi-bundle safety, and repair corrupted store entries on re-install.
+- Remove the runtime dependency on `~/.skills/sources/**/`, leaving per-skill store entries plus global source manifests as the canonical managed-state model.
 
 ## [0.6.0] - 2026-05-01
 
