@@ -121,7 +121,7 @@ export async function groupScannedSkillsIntoBundles(
       }
 
       cacheKey = identity.groupingCacheKey ?? cacheKey;
-      storedSourceDir = identity.logicalStoredSourceDir ?? storedSourceDir;
+      storedSourceDir = identity.logicalStoredSourceDir ?? identity.physicalStoredSourceDir ?? storedSourceDir;
     }
 
     const bundleId = createBundleId({

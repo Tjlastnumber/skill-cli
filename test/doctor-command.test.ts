@@ -412,4 +412,54 @@ describe("runDoctorCommand", () => {
     expect(result.brokenCount).toBe(1);
     expect(capture.logs.some((line) => line.toLowerCase().includes("broken"))).toBe(true);
   });
+
+  it("does not report provenance problems for a legacy source-root managed install", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-doctor-legacy-source-root-"));
+    cleanupDirs.push(base);
+
+    const homeDir = join(base, "home");
+    const projectRoot = join(base, "repo");
+    const storeDir = join(base, "store");
+    const storedSourceDir = join(storeDir, "store", "b".repeat(64));
+    const projectTargetDir = join(projectRoot, ".opencode", "skills");
+    const sourceCanonical = join(projectRoot, "skills-source");
+
+    await mkdir(join(projectRoot, ".git"), { recursive: true });
+    await mkdir(sourceCanonical, { recursive: true });
+    await mkdir(join(storedSourceDir, "alpha-skill"), { recursive: true });
+    await mkdir(projectTargetDir, { recursive: true });
+    await writeConfig({
+      homeDir,
+      storeDir,
+      projectDir: ".opencode/skills",
+      globalDir: join(base, "global"),
+    });
+    await writeFile(join(storedSourceDir, "alpha-skill", "SKILL.md"), "# alpha\n");
+    await writeFile(
+      join(storedSourceDir, ".skill-cli-source.json"),
+      `${JSON.stringify(
+        {
+          version: 1,
+          bundleName: "skills-source",
+          sourceKind: "local",
+          sourceRaw: "./skills-source",
+          sourceCanonical,
+          cacheKey: "b".repeat(64),
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    await symlink(join(storedSourceDir, "alpha-skill"), join(projectTargetDir, "alpha-skill"), "dir");
+    await writeFile(
+      join(projectRoot, "skills-lock.yaml"),
+      "version: 2\nskills:\n  - source: ./skills-source\n    name: '*'\n",
+    );
+
+    const capture = captureOutput();
+    const result = await runDoctorCommand({ tool: "opencode" }, { cwd: projectRoot, homeDir, output: capture.output });
+
+    expect(result.projectDriftCount).toBe(0);
+    expect(capture.logs.some((line) => line.toLowerCase().includes("provenance"))).toBe(false);
+  });
 });
