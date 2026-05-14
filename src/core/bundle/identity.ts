@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { basename } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 import { describeGitRepository } from "../source/git-repo.js";
 import type { SourceDescriptor } from "../source/types.js";
@@ -12,6 +12,25 @@ export interface BundleIdentity {
   sourceKind: BundleSourceKind;
   sourceRaw: string;
   sourceCanonical: string;
+}
+
+export interface StoredBundleIdentity extends BundleIdentity {
+  groupingCacheKey?: string;
+  logicalStoredSourceDir?: string;
+}
+
+function inferLogicalStoredSourceDirFromManifestPath(sourceManifestPath: string): string | undefined {
+  const manifestDir = dirname(sourceManifestPath);
+  if (basename(manifestDir) !== "manifests") {
+    return undefined;
+  }
+
+  const sourceResultKey = basename(sourceManifestPath, ".json");
+  if (!/^[0-9a-f]{64}$/i.test(sourceResultKey)) {
+    return undefined;
+  }
+
+  return join(dirname(manifestDir), "sources", sourceResultKey);
 }
 
 function normalizeGitSource(rawInput: string): { canonical: string; bundleName: string } | undefined {
@@ -87,14 +106,29 @@ export function deriveBundleIdentityFromSourceDescriptor(source: SourceDescripto
 export async function inferBundleIdentityFromStoredSource(options: {
   storedSourceDir: string;
   fallback: BundleIdentity;
-}): Promise<BundleIdentity> {
+}): Promise<StoredBundleIdentity> {
   const metadata = await readSourceMetadata(options.storedSourceDir);
   if (metadata) {
+    if (metadata.version === 2) {
+      return {
+        bundleName: metadata.bundleName,
+        sourceKind: metadata.sourceKind,
+        sourceRaw: metadata.sourceRaw,
+        sourceCanonical: metadata.sourceCanonical,
+        groupingCacheKey: metadata.sourceCacheKey,
+        logicalStoredSourceDir:
+          inferLogicalStoredSourceDirFromManifestPath(metadata.sourceManifestPath) ??
+          options.storedSourceDir,
+      };
+    }
+
     return {
       bundleName: metadata.bundleName,
       sourceKind: metadata.sourceKind,
       sourceRaw: metadata.sourceRaw,
       sourceCanonical: metadata.sourceCanonical,
+      groupingCacheKey: metadata.cacheKey,
+      logicalStoredSourceDir: options.storedSourceDir,
     };
   }
 

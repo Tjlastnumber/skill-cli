@@ -123,10 +123,10 @@ Expected behavior:
 1. when `source` is provided, resolve and fetch that source
 2. support optional `--skill <name>` filtering when `source` is provided
 3. when `source` is omitted, load locked skill entries from the project-root `skills-lock.yaml`, group them by `source`, and install those grouped sources sequentially
-4. store fetched content in canonical store
+4. persist selected skills as independent managed store entries in the canonical store
 5. discover skill entries using tool-specific discovery rules
 6. create symlinks in target directories
-7. record installation state in local registry
+7. attach source-manifest metadata so logical source groups can be reconstructed for lockfile/doctor/remove-by-bundle flows
 8. in interactive terminals, prompt for missing inputs in this order: install scope, custom directory path when scope is `dir`, then tool selection
 9. tool selection must support a single configured tool id or `all`
 10. in non-interactive environments, missing required install inputs must return a user-input error instead of prompting
@@ -139,14 +139,20 @@ Expected behavior:
 
 Command:
 
-`skill remove <bundle-name> --tool <tool|all> [--global|--project|--dir <path>]`
+`skill remove [bundle-name] [--skill <name>] [--tool <tool|all>] [--global|--project|--dir <path>]`
 
 Expected behavior:
 
-1. remove target symlink(s)
-2. preserve store content by default
-3. update local registry
-4. when removing from a `project` target succeeds, automatically sync the default project-root `skills-lock.yaml`
+1. exactly one of `bundle-name` or `--skill <name>` must be provided
+2. default target to `project` when no explicit target flag is passed
+3. allow `--tool` to be omitted and infer it from live installs in the resolved target scope when exactly one matching tool exists
+4. when multiple tools match and `--tool` is omitted, prompt for tool selection in interactive terminals and fail in non-interactive environments
+5. `bundle-name` removes one logical source group
+6. `--skill <name>` removes one installed managed skill candidate only
+7. when duplicate installed skill names match `--skill <name>`, print candidate details and prompt for one selection in interactive terminals; fail in non-interactive environments
+8. remove target symlink(s)
+9. preserve store content by default
+10. when removing from a `project` target succeeds, automatically sync the default project-root `skills-lock.yaml`
 
 ### FR-3 List
 
@@ -193,9 +199,10 @@ Command:
 
 Expected behavior:
 
-1. remove unreferenced store artifacts
-2. keep referenced artifacts intact
-3. print reclaimed size summary
+1. remove unreferenced managed store artifacts
+2. remove orphan source manifests that are no longer referenced by any live managed skill
+3. keep referenced artifacts intact
+4. print reclaimed size summary
 
 ### FR-7 Lockfile
 
@@ -218,11 +225,12 @@ Expected behavior:
    - git: source plus exact commit SHA
    - npm: package name plus exact version
    - local: project-relative path only
-9. collapse full-source installs to `name: "*"`, but emit explicit skill names for partial source installs
-10. if the same source has conflicting selected skill names across tools, fail with a user-facing error instead of writing an ambiguous shared lockfile
-11. dedupe duplicate skill entries and sort output deterministically
-12. in manual mode, fail with a user-facing error when no eligible managed project skills exist
-13. in automatic sync mode for project installs/removals, always target the default project-root `skills-lock.yaml`, ignore custom output paths, and delete that default lockfile when no eligible managed project skills remain
+9. use source manifests to reconstruct full-source membership for logical source groups
+10. collapse full-source installs to `name: "*"`, but emit explicit skill names for partial source installs
+11. if the same source has conflicting selected skill names across tools, fail with a user-facing error instead of writing an ambiguous shared lockfile
+12. dedupe duplicate skill entries and sort output deterministically
+13. in manual mode, fail with a user-facing error when no eligible managed project skills exist
+14. in automatic sync mode for project installs/removals, always target the default project-root `skills-lock.yaml`, ignore custom output paths, and delete that default lockfile when no eligible managed project skills remain
 
 ## 8. Configuration Requirements
 

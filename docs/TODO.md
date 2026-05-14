@@ -39,7 +39,7 @@
 
 | ID | Task | Priority | Status | Notes |
 |---|---|---|---|---|
-| T301 | Implement canonical store layout under `~/.skills` (configurable) | P0 | done | Implemented with cache-keyed store paths |
+| T301 | Implement canonical store layout under `~/.skills` (configurable) | P0 | done | Implemented with skill-level managed store entries plus source manifests |
 | T302 | Implement per-tool discovery via configured `entryPattern` | P0 | done | Discovery implemented (current matcher supports common patterns) |
 | T303 | Implement skill naming strategy (`parentDir` default) | P0 | done | Implemented with duplicate name checks |
 | T304 | Implement discovery diagnostics output | P1 | pending | Show matched entries and skipped paths |
@@ -59,11 +59,11 @@
 | ID | Task | Priority | Status | Notes |
 |---|---|---|---|---|
 | T501 | Implement `install` command | P0 | done | Source parse/fetch/store/discovery/link path implemented |
-| T502 | Implement `remove` command | P0 | done | Removes live managed bundles and project selections |
+| T502 | Implement `remove` command | P0 | done | Defaults to project scope, supports `--skill` with tool inference, and still removes whole live managed bundles |
 | T503 | Implement `list` command | P0 | done | Bundle-level managed/discovered output with filters/expand from live scans |
 | T504 | Implement `doctor` command | P0 | done | Summary checks plus project drift guidance from live state and `skills-lock.yaml` |
 | T505 | Remove `relink` command from project scope | P1 | done | Recovery now comes from reinstalling desired state via `skills-lock.yaml` |
-| T506 | Implement `prune` command | P1 | done | Removes unreferenced store cache directories with size summary |
+| T506 | Implement `prune` command | P1 | done | Removes unreferenced managed store entries and orphan source manifests with size summary |
 | T507 | Remove `register` command from project scope | P1 | done | Registry backfill is no longer part of the product |
 
 ## Phase 6 - Multi-Tool and Batch UX
@@ -72,6 +72,7 @@
 |---|---|---|---|---|
 | T601 | Implement `--tool all` execution flow | P0 | done | Per-tool execution with partial-failure handling |
 | T602 | Implement per-tool result aggregation report | P0 | in_progress | Install/list/remove summaries implemented; richer all-tool failure report pending |
+| T604 | Implement project-first remove UX and duplicate-name interactive resolution | P0 | done | `remove` defaults to project, can infer tool, prompts for multiple tools, and prompts for duplicate installed skill matches |
 | T603 | Implement consistent machine-readable exit codes | P1 | pending | Useful for CI scripting |
 
 ## Phase 7 - Testing
@@ -91,7 +92,7 @@
 
 | ID | Task | Priority | Status | Notes |
 |---|---|---|---|---|
-| T801 | Write README quickstart and command reference | P0 | pending | Include examples for global/project/custom |
+| T801 | Write README quickstart and command reference | P0 | in_progress | README now covers skill-level store, project-first remove, and manifest-backed lockfile/prune behavior; broader examples still pending |
 | T802 | Document private source auth behavior | P0 | pending | Clarify credential pass-through model |
 | T803 | Add sample config for custom tool extensions | P1 | pending | Demonstrate adding a new tool id |
 | T804 | Add troubleshooting section | P1 | pending | Common fs/auth/link issues |

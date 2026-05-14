@@ -12,7 +12,7 @@
 
 `skill-cli` 通过以下方式解决这个问题：
 
-- 使用统一的本地 store 保存技能内容
+- 使用统一的本地 store 保存受管理的 skill 条目
 - 各工具目录只创建软链接，不复制文件
 - 基于当前软链接 bundle 的 live 扫描结果推导安装状态
 - 用 `skills-lock.yaml` 记录项目所需的 skill source，作为跨机器复现的期望状态
@@ -22,7 +22,7 @@
 - 支持从 `git`、`npm`、本地路径安装 skills
 - 支持通过 `skill install --skill <name>` 按 skill 名称安装，或用 `--skill '*'` 安装全部 skill
 - 支持通过 `skill lock` 从当前项目的 managed project 安装生成 skill 级 `skills-lock.yaml` v2
-- 支持在执行 `skill install <source> --project` 和 `skill remove <bundle-name> --project` 后自动同步 `skills-lock.yaml`
+- 支持在项目级安装和删除后自动同步 `skills-lock.yaml`
 - 支持在省略 `source` 时通过 `skill install` 从 `skills-lock.yaml` 批量安装所有锁定 source
 - 支持直接搜索公开 GitHub 仓库中的根目录与嵌套 skills，无需克隆
 - 支持 `claude-code`、`codex`、`opencode`
@@ -30,7 +30,7 @@
 - `list` 中的 `managed` / `discovered` 来源于当前 live 扫描结果
 - 项目级期望状态与恢复路径来自 `skills-lock.yaml`
 - `doctor` 支持检测 live 安装状态、项目漂移和 source provenance 问题
-- `prune` 支持清理未引用的 store 缓存，并可用可重复的 `--dir <path>` 保护仍在使用的自定义目录安装
+- `prune` 支持清理未引用的受管理 skill store 条目、孤儿 source manifest，并可用可重复的 `--dir <path>` 保护仍在使用的自定义目录安装
 
 `git` 安装会先把请求的 branch、tag 或远端 `HEAD` 解析到具体 commit，再写入 `~/.skills/store`，因此同一个仓库的同一个 commit 只会存一份，可被不同项目复用。
 
@@ -63,6 +63,8 @@ skill install git@github.com:obra/superpowers.git --tool opencode --project --sk
 
 对同一个 `source`、同一个 tool 和 target 多次执行按名称安装时，会累积已选 skill，而不是用后一次选择覆盖前一次选择。
 
+当使用 `--skill` 时，managed store 只会持久化被选中的 skill 条目，不会把整个 source 作为一个 managed store 条目写入。
+
 这类项目级安装成功后，也会自动创建或更新 `skills-lock.yaml`。
 
 根据当前项目中已安装的 managed project 内容手动重建锁文件：
@@ -79,11 +81,23 @@ skill install --tool opencode --project
 
 这种基于 lockfile 的安装会读取 `skills-lock.yaml`，但不会重写它。
 
-删除一个 managed project bundle，并自动同步锁文件：
+推荐的删除方式是按 skill 名称删除一个已安装 skill。`remove` 在未显式传目标参数时默认作用于当前项目，且如果当前目标范围内只匹配到一个已安装 tool，则 `--tool` 可省略。
+
+```bash
+skill remove --skill using-superpowers
+```
+
+如果省略 `--tool` 且匹配到多个 tool，`remove` 会在交互式终端中提示选择 tool；在非交互环境中则直接报错。
+
+如果 `--skill` 命中多个同名已安装 skill，`remove` 会先输出类似 search 的候选详情，再在交互式终端中提示你选择一个；非交互环境下会报错，并要求你缩小目标范围。
+
+如果你想删除整个逻辑 source group，仍然可以继续使用按 bundle 名称删除：
 
 ```bash
 skill remove superpowers --tool opencode --project
 ```
+
+项目级删除，包括 `remove --skill`，都会自动同步 `skills-lock.yaml`。
 
 不全局安装 CLI 时，也可以这样执行同一流程：
 
@@ -118,7 +132,7 @@ skill search https://github.com/owner/repo --filter browser
 | `skill install [source] [--skill <name>]... [--tool <tool-or-all>] [三选一目标：--global / --project / --dir <path>]` | 当传入 `source` 时从 git/npm/本地源安装单个 source，并可选按 skill 名称筛选；若为 `--project` 安装，则成功后会自动创建或更新 `skills-lock.yaml`；省略 `source` 时从 `skills-lock.yaml` 中按 source 分组执行安装，但不会重写该文件 |
 | `skill lock [--tool <tool-or-all>] [--output <path>] [--force]` | 根据当前项目中 live 扫描识别出的 managed project skills 手动生成或重建 skill 级 `skills-lock.yaml` v2 |
 | `skill list [--tool <tool-or-all>] [--status <all,managed,discovered>] [--expand]` | 查看 bundle 列表，并可展开成员 skill；`managed` / `discovered` 来源于当前 live 扫描 |
-| `skill remove <bundle-name> --tool <tool-or-all>（三选一目标：--global / --project / --dir <path>）` | 删除已安装 bundle；若为 `--project` 删除，则会自动更新默认 `skills-lock.yaml`，并在没有符合条件的 managed project skills 时删除它 |
+| `skill remove [bundle-name] [--skill <name>] [--tool <tool-or-all>] [三选一目标：--global / --project / --dir <path>]` | 按 bundle 名称删除一个逻辑 source group，或按 skill 名称删除一个已安装 skill；`bundle-name` 与 `--skill` 必须二选一；目标默认是 `--project`，只有一个匹配 tool 时可自动推断 `--tool`，若仍有多个 tool 或多个同名 skill 候选，则交互式 remove 会提示选择，项目级删除会自动更新默认 `skills-lock.yaml` |
 | `skill doctor [--tool <tool-or-all>] [--dir <path>]` | 检查当前 live 安装状态，对照 `skills-lock.yaml` 报告项目漂移，并提示无法恢复 source provenance 的 managed project bundle |
 | `skill prune [--dir <path>]...` | 清理未引用的 store 缓存；可重复传入 `--dir`，在清理时保护仍在使用的自定义目录安装 |
 
@@ -136,9 +150,11 @@ skill search https://github.com/owner/repo --filter browser
 
 `skill install <source> --project` 在安装成功后，会自动创建或更新项目根目录下默认的 `skills-lock.yaml`。
 
-`skill remove <bundle-name> --project` 在删除成功后，会自动更新项目根目录下默认的 `skills-lock.yaml`。如果已经没有符合条件的 managed project skills，则会删除这个自动同步的默认锁文件。
+`skill remove --project` 在删除成功后，会自动更新项目根目录下默认的 `skills-lock.yaml`。这同时适用于 `skill remove <bundle-name>` 和 `skill remove --skill <name>`。如果已经没有符合条件的 managed project skills，则会删除这个自动同步的默认锁文件。
 
 当 `skill install` 省略 `source` 参数时，会从项目根目录读取 `skills-lock.yaml`，先按 `source` 分组，再按顺序安装每个 source，但不会重写该文件。
+
+`lock` 与 `doctor` 会基于 manifest 支持的 managed skill 条目重建逻辑 source group。完整 source 安装会折叠为 `name: "*"`；部分安装则保留显式 skill 名称。
 
 不再兼容 lockfile v1。旧文件需要通过 `skill lock --force` 重新生成。
 
@@ -169,8 +185,9 @@ skills:
 2. 对 `git` 源先把请求的 ref 解析为远端具体 commit SHA
 3. 拉取并持久化到本地 store（默认 `~/.skills`）
 4. 按工具规则发现 skill 成员（默认 `**/SKILL.md`）
-5. 在目标工具目录创建软链接
-6. 基于当前 live 扫描结果推导 `managed` / `discovered` 状态
+5. 将选中的 skill 持久化为独立的 managed store 条目，并写入用于分组与 provenance 的 source manifest
+6. 在目标工具目录创建软链接
+7. 基于当前 live 扫描结果推导 `managed` / `discovered` 状态
 
 ## 支持工具与默认目录
 

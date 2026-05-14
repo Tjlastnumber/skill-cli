@@ -1,9 +1,9 @@
 import { readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join, normalize } from "node:path";
 
 import { FilesystemError } from "../errors.js";
 
-export interface SourceMetadata {
+export interface SourceMetadataV1 {
   version: 1;
   bundleName: string;
   sourceKind: "local" | "git" | "npm" | "unknown";
@@ -12,7 +12,45 @@ export interface SourceMetadata {
   cacheKey: string;
 }
 
+export interface SourceMetadataV2 {
+  version: 2;
+  storeEntryKind: "skill";
+  bundleName: string;
+  skillName: string;
+  description: string;
+  relativeSkillDir: string;
+  sourceKind: "local" | "git" | "npm" | "unknown";
+  sourceRaw: string;
+  sourceCanonical: string;
+  sourceRevision: string;
+  sourceDisplayName: string;
+  sourceManifestPath: string;
+  sourceCacheKey: string;
+}
+
+export type SourceMetadata = SourceMetadataV1 | SourceMetadataV2;
+
 const FILE_NAME = ".skill-cli-source.json";
+
+function isKnownSourceKind(value: unknown): value is SourceMetadataV1["sourceKind"] {
+  return value === "local" || value === "git" || value === "npm" || value === "unknown";
+}
+
+function isSafeRelativePath(value: string): boolean {
+  return (
+    Boolean(value) &&
+    !value.startsWith("/") &&
+    !value.includes("\\") &&
+    value !== "." &&
+    value !== ".." &&
+    normalize(value) === value &&
+    !normalize(value).startsWith("../")
+  );
+}
+
+function isSafeManifestPath(value: string): boolean {
+  return Boolean(value) && !value.includes("\0") && isAbsolute(value) && normalize(value) === value;
+}
 
 function getMetadataPath(storedSourceDir: string): string {
   return join(storedSourceDir, FILE_NAME);
@@ -41,24 +79,58 @@ export async function readSourceMetadata(storedSourceDir: string): Promise<Sourc
     const parsed = JSON.parse(raw) as Partial<SourceMetadata>;
 
     if (
-      parsed.version !== 1 ||
-      typeof parsed.bundleName !== "string" ||
-      typeof parsed.sourceKind !== "string" ||
-      typeof parsed.sourceRaw !== "string" ||
-      typeof parsed.sourceCanonical !== "string" ||
-      typeof parsed.cacheKey !== "string"
+      parsed.version === 1 &&
+      typeof parsed.bundleName === "string" &&
+      isKnownSourceKind(parsed.sourceKind) &&
+      typeof parsed.sourceRaw === "string" &&
+      typeof parsed.sourceCanonical === "string" &&
+      typeof parsed.cacheKey === "string"
     ) {
-      return undefined;
+      return {
+        version: 1,
+        bundleName: parsed.bundleName,
+        sourceKind: parsed.sourceKind,
+        sourceRaw: parsed.sourceRaw,
+        sourceCanonical: parsed.sourceCanonical,
+        cacheKey: parsed.cacheKey,
+      };
     }
 
-    return {
-      version: 1,
-      bundleName: parsed.bundleName,
-      sourceKind: parsed.sourceKind,
-      sourceRaw: parsed.sourceRaw,
-      sourceCanonical: parsed.sourceCanonical,
-      cacheKey: parsed.cacheKey,
-    };
+    if (
+      parsed.version === 2 &&
+      parsed.storeEntryKind === "skill" &&
+      typeof parsed.bundleName === "string" &&
+      typeof parsed.skillName === "string" &&
+      typeof parsed.description === "string" &&
+      typeof parsed.relativeSkillDir === "string" &&
+      isSafeRelativePath(parsed.relativeSkillDir) &&
+      isKnownSourceKind(parsed.sourceKind) &&
+      typeof parsed.sourceRaw === "string" &&
+      typeof parsed.sourceCanonical === "string" &&
+      typeof parsed.sourceRevision === "string" &&
+      typeof parsed.sourceDisplayName === "string" &&
+      typeof parsed.sourceManifestPath === "string" &&
+      isSafeManifestPath(parsed.sourceManifestPath) &&
+      typeof parsed.sourceCacheKey === "string"
+    ) {
+      return {
+        version: 2,
+        storeEntryKind: "skill",
+        bundleName: parsed.bundleName,
+        skillName: parsed.skillName,
+        description: parsed.description,
+        relativeSkillDir: parsed.relativeSkillDir,
+        sourceKind: parsed.sourceKind,
+        sourceRaw: parsed.sourceRaw,
+        sourceCanonical: parsed.sourceCanonical,
+        sourceRevision: parsed.sourceRevision,
+        sourceDisplayName: parsed.sourceDisplayName,
+        sourceManifestPath: parsed.sourceManifestPath,
+        sourceCacheKey: parsed.sourceCacheKey,
+      };
+    }
+
+    return undefined;
   } catch (error) {
     if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
       return undefined;

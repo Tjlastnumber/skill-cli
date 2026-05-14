@@ -5,10 +5,13 @@ import type { InstalledSkillCandidate } from "../core/discovery/scan-installed.j
 import { loadConfig } from "../core/config/load.js";
 import { discoverSkills } from "../core/discovery/discover.js";
 import { scanLiveBundles } from "../core/discovery/scan-live-bundles.js";
+import { ExitCode, SkillCliError } from "../core/errors.js";
 import { createOutput, type Output } from "../core/output.js";
 import { loadSkillsLockfile } from "../core/lockfile/load.js";
 import { resolveProjectSkillsLockfilePath } from "../core/lockfile/path.js";
 import { resolveLockedSourceForBundle } from "../core/lockfile/resolve-locked-source.js";
+import { readSourceManifest } from "../core/store/source-manifest.js";
+import { readSourceMetadata } from "../core/store/source-metadata.js";
 
 import { resolveScanTargets, resolveTargetRoot, selectTools } from "./shared.js";
 
@@ -79,6 +82,72 @@ async function fileExists(pathValue: string): Promise<boolean> {
 interface CollectedProjectInstalledSources {
   sourceStates: Map<string, ProjectInstalledSourceState>;
   unresolvableBundleCount: number;
+}
+
+async function resolveInstalledSourceSkillNames(options: {
+  bundle: {
+    sourceKind: string;
+    storedSourceDir: string;
+    members: Array<{ sourceSkillDir?: string }>;
+  };
+  entryPattern: string;
+  nameStrategy: string;
+  rootSkillName: string;
+}): Promise<string[] | undefined> {
+  const usesLogicalSourceGroup = options.bundle.members.some(
+    (member) => member.sourceSkillDir && member.sourceSkillDir !== options.bundle.storedSourceDir,
+  );
+
+  if (options.bundle.storedSourceDir !== "unknown") {
+    const sourceLevelMetadata = await readSourceMetadata(options.bundle.storedSourceDir);
+    if (sourceLevelMetadata) {
+      const sourceLevelManifestPath =
+        sourceLevelMetadata.version === 2
+          ? sourceLevelMetadata.sourceManifestPath
+          : `${options.bundle.storedSourceDir}/source-manifest.json`;
+      const sourceLevelManifest = await readSourceManifest(sourceLevelManifestPath);
+      if (!sourceLevelManifest) {
+        return undefined;
+      }
+
+      return sourceLevelManifest.skills.map((skill) => skill.skillName);
+    }
+
+    if (usesLogicalSourceGroup) {
+      return undefined;
+    }
+  }
+
+  const memberDirs = new Set<string>();
+
+  for (const member of options.bundle.members) {
+    if (member.sourceSkillDir) {
+      memberDirs.add(member.sourceSkillDir);
+    }
+  }
+
+  for (const memberDir of memberDirs) {
+    const metadata = await readSourceMetadata(memberDir);
+    if (!metadata || metadata.version !== 2) {
+      continue;
+    }
+
+    const manifest = await readSourceManifest(metadata.sourceManifestPath);
+    if (!manifest) {
+      return undefined;
+    }
+
+    return manifest.skills.map((skill) => skill.skillName);
+  }
+
+  return (
+    await discoverSkills({
+      sourceDir: options.bundle.storedSourceDir,
+      entryPattern: options.entryPattern,
+      nameStrategy: options.nameStrategy,
+      rootSkillName: options.rootSkillName,
+    })
+  ).map((skill) => skill.skillName);
 }
 
 async function countProjectLockfileDrift(options: {
@@ -179,15 +248,29 @@ async function collectProjectInstalledSources(options: {
       continue;
     }
 
-    const source = await resolveLockedSourceForBundle({ cwd: options.cwd, bundle });
-    const discoveredSkillNames = (
-      await discoverSkills({
-        sourceDir: bundle.storedSourceDir,
-        entryPattern: toolConfig.entryPattern,
-        nameStrategy: toolConfig.nameStrategy,
-        rootSkillName: bundle.bundleName,
-      })
-    ).map((skill) => skill.skillName);
+    const discoveredSkillNames = await resolveInstalledSourceSkillNames({
+      bundle,
+      entryPattern: toolConfig.entryPattern,
+      nameStrategy: toolConfig.nameStrategy,
+      rootSkillName: bundle.bundleName,
+    });
+    if (!discoveredSkillNames) {
+      unresolvableBundleCount += 1;
+      continue;
+    }
+
+    let source: string;
+    try {
+      source = await resolveLockedSourceForBundle({ cwd: options.cwd, bundle });
+    } catch (error) {
+      if (error instanceof SkillCliError && error.exitCode === ExitCode.USER_INPUT) {
+        unresolvableBundleCount += 1;
+        continue;
+      }
+
+      throw error;
+    }
+
     const state =
       sourceStates.get(source) ??
       {

@@ -172,6 +172,63 @@ describe("runListCommand", () => {
     expect(capture.logs.some((line) => line.includes("No bundles found for selected filters"))).toBe(true);
   });
 
+  it("shows one managed bundle when multiple store-backed skills come from one source", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-list-managed-grouped-"));
+    cleanupDirs.push(base);
+
+    const homeDir = join(base, "home");
+    const cwd = join(base, "workspace");
+    const sourceRoot = join(cwd, "skills-source");
+    const targetDir = join(base, "target", "codex-global");
+    const storeDir = join(base, "store");
+
+    await mkdir(join(homeDir, ".config", "skill-cli"), { recursive: true });
+    await mkdir(join(sourceRoot, "alpha-skill"), { recursive: true });
+    await mkdir(join(sourceRoot, "beta-skill"), { recursive: true });
+    await writeFile(join(sourceRoot, "alpha-skill", "SKILL.md"), "# alpha\n");
+    await writeFile(join(sourceRoot, "beta-skill", "SKILL.md"), "# beta\n");
+
+    await writeFile(
+      join(homeDir, ".config", "skill-cli", "config.json"),
+      JSON.stringify(
+        {
+          storeDir,
+          tools: {
+            codex: {
+              globalDir: targetDir,
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    await runInstallCommand(
+      {
+        source: "skills-source",
+        tool: "codex",
+        target: { type: "global" },
+        force: false,
+      },
+      { cwd, homeDir, output: captureOutput().output },
+    );
+
+    const capture = captureOutput();
+    const result = await runListCommand(
+      { tool: "codex", expand: true },
+      { cwd, homeDir, output: capture.output },
+    );
+
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0]).toMatchObject({ status: "managed", bundleName: "skills-source" });
+    expect(result.entries[0]?.members.map((member) => member.skillName)).toEqual([
+      "alpha-skill",
+      "beta-skill",
+    ]);
+    expect(capture.logs.some((line) => line.includes("members=2"))).toBe(true);
+  });
+
   it("shows discovered status for custom dir targets outside the store", async () => {
     const base = await mkdtemp(join(tmpdir(), "skill-cli-list-custom-dir-"));
     cleanupDirs.push(base);

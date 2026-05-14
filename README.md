@@ -12,7 +12,7 @@ Different coding CLIs use different skill directories. Managing the same skill s
 
 `skill-cli` solves this by:
 
-- keeping one canonical local store
+- keeping one canonical local store of managed skill entries
 - linking skills into tool directories instead of copying files
 - deriving install state from live symlinked bundles
 - capturing project skill sources in `skills-lock.yaml` so the same setup can be recreated across machines as desired state
@@ -22,7 +22,7 @@ Different coding CLIs use different skill directories. Managing the same skill s
 - Install skills from `git`, `npm`, or local paths
 - Install specific skills by name with `skill install --skill <name>` or `--skill '*'`
 - Generate skill-level `skills-lock.yaml` v2 from managed project installs with `skill lock`
-- Auto-sync `skills-lock.yaml` on `skill install <source> --project` and `skill remove <bundle-name> --project`
+- Auto-sync `skills-lock.yaml` on project installs and removals
 - Install all locked sources from `skills-lock.yaml` with `skill install` when `source` is omitted
 - Search repository-root and nested skills from public GitHub repositories without cloning
 - Manage skills for `claude-code`, `codex`, and `opencode`
@@ -30,7 +30,7 @@ Different coding CLIs use different skill directories. Managing the same skill s
 - `managed` vs `discovered` visibility in `list`, derived from live installed bundles
 - Project recovery and desired state via `skills-lock.yaml`
 - Health checks, project drift guidance, and provenance warnings via `doctor`
-- Store cleanup via `prune`, including repeatable `--dir <path>` protection for active custom installs
+- Store cleanup via `prune`, including orphan managed skill entries, orphan source manifests, and repeatable `--dir <path>` protection for active custom installs
 
 Git installs resolve the requested branch, tag, or remote `HEAD` to a concrete commit before persisting to `~/.skills/store`, so the same repository commit is stored once and reused across projects.
 
@@ -63,6 +63,8 @@ skill install git@github.com:obra/superpowers.git --tool opencode --project --sk
 
 Repeated installs from the same `source` accumulate named skills for the same tool + target instead of replacing earlier selections.
 
+When `--skill` is used, the managed store persists only the selected skill entries, not the whole source as one managed store entry.
+
 That project install also creates or updates `skills-lock.yaml` automatically.
 
 Rebuild the project lockfile manually from the current managed project installs:
@@ -79,11 +81,23 @@ skill install --tool opencode --project
 
 This lockfile-driven install reads `skills-lock.yaml` but does not rewrite it.
 
-Remove a managed project bundle and auto-sync the lockfile:
+Preferred removal flow: remove one installed skill by name. `remove` defaults to the current project target when no target flag is passed, and `--tool` is optional when the current target scope only matches one installed tool.
+
+```bash
+skill remove --skill using-superpowers
+```
+
+If `--tool` is omitted and more than one tool matches, `remove` prompts for the tool in interactive terminals and errors in non-interactive environments.
+
+If `--skill` matches duplicate installed skill names, `remove` prints search-style candidate details and prompts you to pick one in interactive terminals. In non-interactive environments it errors and asks for a narrower target.
+
+Whole-source removal still exists when you want to remove the full logical source group:
 
 ```bash
 skill remove superpowers --tool opencode --project
 ```
+
+Project removals, including `remove --skill`, auto-sync `skills-lock.yaml`.
 
 Run the same lockfile install flow without a global install:
 
@@ -118,7 +132,7 @@ skill search https://github.com/owner/repo --filter browser
 | `skill install [source] [--skill <name>]... [--tool <tool-or-all>] [one target: --global / --project / --dir <path>]` | Install one source from git/npm/local input, optionally restricting the install to specific skill names; `--project` installs with an explicit `source` auto-create or update `skills-lock.yaml`; when `source` is omitted, install all locked source groups from `skills-lock.yaml` without rewriting it |
 | `skill lock [--tool <tool-or-all>] [--output <path>] [--force]` | Manually generate or rebuild skill-level `skills-lock.yaml` v2 entries from currently installed live managed project skills |
 | `skill list [--tool <tool-or-all>] [--status <all,managed,discovered>] [--expand]` | List bundles and optionally expand member skills; `managed` vs `discovered` comes from the current live install scan |
-| `skill remove <bundle-name> --tool <tool-or-all> (one target: --global / --project / --dir <path>)` | Remove an installed bundle; `--project` removals auto-update the default `skills-lock.yaml` and delete it when no eligible managed project skills remain |
+| `skill remove [bundle-name] [--skill <name>] [--tool <tool-or-all>] [one target: --global / --project / --dir <path>]` | Remove either one logical source group by bundle name or one installed skill by name; exactly one of `bundle-name` or `--skill` is required; target defaults to `--project`, `--tool` is inferred when only one matching tool exists, interactive remove prompts when multiple tools or duplicate skill matches remain, and project removals auto-update the default `skills-lock.yaml` |
 | `skill doctor [--tool <tool-or-all>] [--dir <path>]` | Validate live install state, report project drift against `skills-lock.yaml`, and warn when managed project bundle provenance can no longer be resolved |
 | `skill prune [--dir <path>]...` | Remove unreferenced store entries; repeat `--dir` to protect active custom-directory installs during cleanup |
 
@@ -136,9 +150,11 @@ In non-interactive environments, missing required install inputs do not trigger 
 
 `skill install <source> --project` automatically creates or updates the default project-root `skills-lock.yaml` after the install succeeds.
 
-`skill remove <bundle-name> --project` automatically updates the default project-root `skills-lock.yaml` after the removal succeeds. If no eligible managed project skills remain, the auto-synced default lockfile is deleted.
+`skill remove --project` automatically updates the default project-root `skills-lock.yaml` after the removal succeeds. This applies to both `skill remove <bundle-name>` and `skill remove --skill <name>`. If no eligible managed project skills remain, the auto-synced default lockfile is deleted.
 
 `skill install` with no `source` argument reads `skills-lock.yaml` from the project root, groups entries by `source`, and installs each source sequentially, but it does not rewrite the lockfile.
+
+Lockfile generation and `doctor` reconstruct logical source groups from manifest-backed managed skill entries. Full-source installs collapse to `name: "*"`; partial installs keep explicit skill names.
 
 Lockfile v1 is no longer supported. Regenerate older files with `skill lock --force`.
 
@@ -169,8 +185,9 @@ Notes:
 2. For git sources, resolve the requested ref to a concrete remote commit SHA
 3. Fetch and persist into local store (default `~/.skills`)
 4. Discover skill members via tool rules (default `**/SKILL.md`)
-5. Create symlinks in target tool directories
-6. Derive managed vs discovered state from the current live install scan
+5. Persist selected skills as independent managed store entries plus a source manifest for grouping/provenance
+6. Create symlinks in target tool directories
+7. Derive managed vs discovered state from the current live install scan
 
 ## Supported tools and defaults
 

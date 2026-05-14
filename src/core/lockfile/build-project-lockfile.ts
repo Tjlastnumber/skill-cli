@@ -3,6 +3,8 @@ import { discoverSkills } from "../discovery/discover.js";
 import { scanLiveBundles } from "../discovery/scan-live-bundles.js";
 import type { InstalledSkillCandidate } from "../discovery/scan-installed.js";
 import { ExitCode, SkillCliError } from "../errors.js";
+import { readSourceManifest } from "../store/source-manifest.js";
+import { readSourceMetadata } from "../store/source-metadata.js";
 import { resolveTargetRoot, selectTools } from "../../commands/shared.js";
 import { resolveLockedSourceForBundle } from "./resolve-locked-source.js";
 
@@ -30,6 +32,34 @@ interface CollectedProjectLockedSkillGroups {
   lockedSkillGroups: Map<string, ProjectLockedSkillGroup>;
   eligibleBundleCount: number;
   unresolvableBundleCount: number;
+}
+
+function hasBrokenManagedMembersForBundle(options: {
+  bundle: {
+    tool: string;
+    targetType: "global" | "project" | "dir";
+    targetRoot: string;
+    members: Array<{ skillName: string }>;
+  };
+  brokenEntries: Array<{
+    tool: string;
+    targetType: "global" | "project" | "dir";
+    targetRoot: string;
+    skillName: string;
+  }>;
+  discoveredSkillNames: string[];
+}): boolean {
+  const selectedSkillNames = new Set(options.bundle.members.map((member) => member.skillName));
+
+  return options.brokenEntries.some((entry) => {
+    return (
+      entry.tool === options.bundle.tool &&
+      entry.targetType === options.bundle.targetType &&
+      entry.targetRoot === options.bundle.targetRoot &&
+      !selectedSkillNames.has(entry.skillName) &&
+      options.discoveredSkillNames.includes(entry.skillName)
+    );
+  });
 }
 
 function ensureUniqueSkillNames(skillNames: string[], bundleName: string): void {
@@ -66,6 +96,84 @@ function setsEqual(left: Set<string>, right: Set<string>): boolean {
   }
 
   return true;
+}
+
+async function resolveManifestSkillNames(options: {
+  bundle: {
+    sourceKind: string;
+    storedSourceDir: string;
+    members: Array<{ sourceSkillDir?: string }>;
+  };
+  entryPattern: string;
+  nameStrategy: string;
+  rootSkillName: string;
+}): Promise<string[]> {
+  const usesLogicalSourceGroup = options.bundle.members.some(
+    (member) => member.sourceSkillDir && member.sourceSkillDir !== options.bundle.storedSourceDir,
+  );
+
+  if (options.bundle.storedSourceDir !== "unknown") {
+    const sourceLevelMetadata = await readSourceMetadata(options.bundle.storedSourceDir);
+    if (sourceLevelMetadata) {
+      const sourceLevelManifestPath =
+        sourceLevelMetadata.version === 2
+          ? sourceLevelMetadata.sourceManifestPath
+          : `${options.bundle.storedSourceDir}/source-manifest.json`;
+      const sourceLevelManifest = await readSourceManifest(sourceLevelManifestPath);
+      if (!sourceLevelManifest) {
+        throw new SkillCliError(
+          `Cannot generate a project lockfile: unresolvable source manifest for '${options.rootSkillName}'`,
+          ExitCode.USER_INPUT,
+          "Reinstall the project skills to refresh the stored source manifest",
+        );
+      }
+
+      return sourceLevelManifest.skills.map((skill) => skill.skillName);
+    }
+
+    if (usesLogicalSourceGroup) {
+      throw new SkillCliError(
+        `Cannot generate a project lockfile: unresolvable source manifest for '${options.rootSkillName}'`,
+        ExitCode.USER_INPUT,
+        "Reinstall the project skills to refresh the stored source manifest",
+      );
+    }
+  }
+
+  const memberDirs = new Set<string>();
+
+  for (const member of options.bundle.members) {
+    if (member.sourceSkillDir) {
+      memberDirs.add(member.sourceSkillDir);
+    }
+  }
+
+  for (const memberDir of memberDirs) {
+    const metadata = await readSourceMetadata(memberDir);
+    if (!metadata || metadata.version !== 2) {
+      continue;
+    }
+
+    const manifest = await readSourceManifest(metadata.sourceManifestPath);
+    if (!manifest) {
+      throw new SkillCliError(
+        `Cannot generate a project lockfile: unresolvable source manifest for '${options.rootSkillName}'`,
+        ExitCode.USER_INPUT,
+        "Reinstall the project skills to refresh the stored source manifest",
+      );
+    }
+
+    return manifest.skills.map((skill) => skill.skillName);
+  }
+
+  return (
+    await discoverSkills({
+      sourceDir: options.bundle.storedSourceDir,
+      entryPattern: options.entryPattern,
+      nameStrategy: options.nameStrategy,
+      rootSkillName: options.rootSkillName,
+    })
+  ).map((skill) => skill.skillName);
 }
 
 export async function buildProjectLockfile(
@@ -134,7 +242,7 @@ export async function collectProjectLockedSkillGroups(
     )
   ).flatMap((target) => (target ? [target] : []));
 
-  const { managedBundles } = await scanLiveBundles(scanTargets);
+  const { managedBundles, brokenEntries } = await scanLiveBundles(scanTargets);
   const eligibleBundles = managedBundles.filter((bundle) => bundle.targetType === "project");
   const lockedSkillGroups = new Map<string, ProjectLockedSkillGroup>();
   let unresolvableBundleCount = 0;
@@ -150,15 +258,31 @@ export async function collectProjectLockedSkillGroups(
       continue;
     }
 
-    const lockedSource = await resolveLockedSourceForBundle({ cwd: args.cwd, bundle });
-    const discoveredSkillNames = (
-      await discoverSkills({
-        sourceDir: bundle.storedSourceDir,
+    let lockedSource: string;
+    let discoveredSkillNames: string[];
+
+    try {
+      discoveredSkillNames = await resolveManifestSkillNames({
+        bundle,
         entryPattern: toolConfig.entryPattern,
         nameStrategy: toolConfig.nameStrategy,
         rootSkillName: bundle.bundleName,
-      })
-    ).map((skill) => skill.skillName);
+      });
+      lockedSource = await resolveLockedSourceForBundle({ cwd: args.cwd, bundle });
+    } catch (error) {
+      if (error instanceof SkillCliError && error.exitCode === ExitCode.USER_INPUT) {
+        unresolvableBundleCount += 1;
+        continue;
+      }
+
+      throw error;
+    }
+
+    if (hasBrokenManagedMembersForBundle({ bundle, brokenEntries, discoveredSkillNames })) {
+      unresolvableBundleCount += 1;
+      continue;
+    }
+
     ensureUniqueSkillNames(discoveredSkillNames, bundle.bundleName);
 
     const bundleAllSkillNames = new Set(discoveredSkillNames);

@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -278,6 +278,49 @@ describe("runDoctorCommand", () => {
     );
 
     await rm(join(installResult.storedSourceDir, ".skill-cli-source.json"), { force: true });
+
+    const capture = captureOutput();
+    const result = await runDoctorCommand({ tool: "opencode" }, { cwd: projectRoot, homeDir, output: capture.output });
+
+    expect(result.projectDriftCount).toBeGreaterThan(0);
+    expect(capture.logs.some((line) => line.toLowerCase().includes("provenance"))).toBe(true);
+    expect(capture.logs.some((line) => line.includes("skill install --project"))).toBe(true);
+  });
+
+  it("counts invalid locked-source provenance as unresolvable instead of aborting doctor", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-doctor-invalid-locked-source-"));
+    cleanupDirs.push(base);
+
+    const homeDir = join(base, "home");
+    const projectRoot = join(base, "repo");
+    const storeDir = join(base, "store");
+
+    await mkdir(join(projectRoot, ".git"), { recursive: true });
+    await writeProjectSource(projectRoot, ["alpha-skill"]);
+    await writeConfig({
+      homeDir,
+      storeDir,
+      projectDir: ".opencode/skills",
+      globalDir: join(base, "global"),
+    });
+    await writeFile(
+      join(projectRoot, "skills-lock.yaml"),
+      "version: 2\nskills:\n  - source: ./skills-source\n    name: alpha-skill\n",
+    );
+
+    const installResult = await runInstallCommand(
+      { source: "./skills-source", tool: "opencode", target: { type: "project" }, force: false },
+      { cwd: projectRoot, homeDir, output: captureOutput().output },
+    );
+
+    const manifestPath = join(installResult.storedSourceDir, "source-manifest.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
+      sourceCanonical: string;
+      sourceKind: string;
+    };
+    manifest.sourceKind = "local";
+    manifest.sourceCanonical = "./skills-source";
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 
     const capture = captureOutput();
     const result = await runDoctorCommand({ tool: "opencode" }, { cwd: projectRoot, homeDir, output: capture.output });
