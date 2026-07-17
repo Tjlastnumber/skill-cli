@@ -206,8 +206,9 @@ export async function runCli(argv: string[] = process.argv): Promise<void> {
   program
     .command("prune")
     .option("--dir <path>", "Also protect custom directory", collectRepeatedOption, [])
-    .action(async (options: { dir?: string[] }) => {
-      await runPruneCommand({ dirs: options.dir ?? [] });
+    .option("--rebuild", "Wipe and re-install lean store entries from skills-lock.yaml")
+    .action(async (options: { dir?: string[]; rebuild?: boolean }) => {
+      await runPruneCommand({ dirs: options.dir ?? [], rebuild: options.rebuild ?? false });
     });
 
   try {

@@ -23,6 +23,8 @@ export interface SourceMetadataV3 {
   sourceDisplayName: string;
   sourceManifestPath: string;
   sourceCacheKey: string;
+  sourceCommitSha?: string;
+  sourceRepoKey?: string;
 }
 
 export interface SourceMetadataV2 {
@@ -39,6 +41,8 @@ export interface SourceMetadataV2 {
   sourceDisplayName: string;
   sourceManifestPath: string;
   sourceCacheKey: string;
+  sourceCommitSha?: string;
+  sourceRepoKey?: string;
 }
 
 export type SourceMetadata = SourceMetadataV1 | SourceMetadataV2 | SourceMetadataV3;
@@ -143,6 +147,10 @@ export async function readSourceMetadata(storedSourceDir: string): Promise<Sourc
         sourceDisplayName: parsed.sourceDisplayName,
         sourceManifestPath: parsed.sourceManifestPath,
         sourceCacheKey: parsed.sourceCacheKey,
+        ...(typeof parsed.sourceCommitSha === "string"
+          ? { sourceCommitSha: parsed.sourceCommitSha }
+          : {}),
+        ...(typeof parsed.sourceRepoKey === "string" ? { sourceRepoKey: parsed.sourceRepoKey } : {}),
       };
     }
 
@@ -170,6 +178,10 @@ export async function readSourceMetadata(storedSourceDir: string): Promise<Sourc
         sourceDisplayName: parsed.sourceDisplayName,
         sourceManifestPath: parsed.sourceManifestPath,
         sourceCacheKey: parsed.sourceCacheKey,
+        ...(typeof parsed.sourceCommitSha === "string"
+          ? { sourceCommitSha: parsed.sourceCommitSha }
+          : {}),
+        ...(typeof parsed.sourceRepoKey === "string" ? { sourceRepoKey: parsed.sourceRepoKey } : {}),
       };
     }
 

@@ -73,6 +73,74 @@ describe("resolveLockedSourceForBundle", () => {
     ).resolves.toBe(`https://github.com/acme/skills.git#${sha}`);
   });
 
+  it("pins the git source to metadata.sourceCommitSha instead of the cacheKey revision", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-lockfile-resolve-git-sha-"));
+    cleanupDirs.push(base);
+
+    const realCommitSha = "0123456789abcdef0123456789abcdef01234567";
+    const cacheKeyRevision = "c".repeat(64);
+    const storedSourceDir = join(base, "store", "bundle");
+    const memberDir = join(storedSourceDir, "alpha-skill");
+    const manifestPath = join(base, "manifests", "source.json");
+
+    await mkdir(memberDir, { recursive: true });
+    await mkdir(join(base, "manifests"), { recursive: true });
+    await writeFile(join(memberDir, "SKILL.md"), "# alpha\n");
+    await writeFile(
+      join(memberDir, ".skill-cli-source.json"),
+      `${JSON.stringify(
+        {
+          version: 2,
+          storeEntryKind: "skill",
+          bundleName: "skills",
+          skillName: "alpha-skill",
+          description: "",
+          relativeSkillDir: "alpha-skill",
+          sourceKind: "git",
+          sourceRaw: "https://github.com/acme/skills.git",
+          sourceCanonical: "github.com/acme/skills",
+          sourceRevision: cacheKeyRevision,
+          sourceDisplayName: "skills",
+          sourceManifestPath: manifestPath,
+          sourceCacheKey: cacheKeyRevision,
+          sourceCommitSha: realCommitSha,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    await writeFile(
+      manifestPath,
+      `${JSON.stringify(
+        {
+          version: 1,
+          sourceKind: "git",
+          sourceRaw: "https://github.com/acme/skills.git",
+          sourceCanonical: "github.com/acme/skills",
+          sourceRevision: cacheKeyRevision,
+          sourceDisplayName: "skills",
+          sourceCacheKey: cacheKeyRevision,
+          skills: [{ skillName: "alpha-skill", description: "", relativeSkillDir: "alpha-skill" }],
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    await expect(
+      resolveLockedSourceForBundle({
+        cwd: base,
+        bundle: {
+          sourceKind: "git",
+          sourceRaw: "https://github.com/acme/skills.git",
+          sourceCanonical: "github.com/acme/skills",
+          storedSourceDir,
+          members: [{ sourceSkillDir: memberDir }],
+        },
+      }),
+    ).resolves.toBe(`https://github.com/acme/skills.git#${realCommitSha}`);
+  });
+
   it("returns a project-relative local source path", async () => {
     const base = await mkdtemp(join(tmpdir(), "skill-cli-lockfile-resolve-local-"));
     cleanupDirs.push(base);

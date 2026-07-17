@@ -1430,7 +1430,6 @@ describe("runInstallCommand", () => {
       ),
     );
 
-    let cloneCount = 0;
     const runner = async (
       command: string,
       args: string[],
@@ -1444,25 +1443,40 @@ describe("runInstallCommand", () => {
         };
       }
 
-      if (command === "git" && args[0] === "clone") {
-        cloneCount += 1;
-        const targetDir = args[args.length - 1];
-        if (targetDir) {
-          await mkdir(join(targetDir, ".git"), { recursive: true });
-          await mkdir(join(targetDir, "alpha-skill"), { recursive: true });
-          await writeFile(join(targetDir, "alpha-skill", "SKILL.md"), "# alpha\n");
-          await writeFile(join(targetDir, ".git", "clone-id"), `${cloneCount}\n`);
+      if (command === "git" && args[0] === "clone" && args[1] === "--bare") {
+        const barePath = args[args.length - 1];
+        if (barePath) {
+          await mkdir(barePath, { recursive: true });
         }
-
         return { stdout: "", stderr: "", exitCode: 0 };
       }
 
-      if (command === "git" && args[0] === "rev-parse") {
-        return {
-          stdout: `${resolvedCommitSha}\n`,
-          stderr: "",
-          exitCode: 0,
-        };
+      if (command === "git" && (args[0] === "remote" || args[0] === "fetch")) {
+        return { stdout: "", stderr: "", exitCode: 0 };
+      }
+
+      if (command === "git" && args[0] === "--git-dir") {
+        if (args[2] === "rev-parse") {
+          return { stdout: `${resolvedCommitSha}\n`, stderr: "", exitCode: 0 };
+        }
+        if (args[2] === "archive") {
+          const outputIndex = args.indexOf("--output");
+          const tarPath = outputIndex >= 0 ? args[outputIndex + 1] : undefined;
+          if (tarPath) {
+            await writeFile(tarPath, "FAKE_TAR");
+          }
+          return { stdout: "", stderr: "", exitCode: 0 };
+        }
+      }
+
+      if (command === "tar") {
+        const cIndex = args.indexOf("-C");
+        const dest = cIndex >= 0 ? args[cIndex + 1] : undefined;
+        if (dest) {
+          await mkdir(join(dest, "alpha-skill"), { recursive: true });
+          await writeFile(join(dest, "alpha-skill", "SKILL.md"), "# alpha\n");
+        }
+        return { stdout: "", stderr: "", exitCode: 0 };
       }
 
       throw new Error(`Unexpected command: ${command} ${args.join(" ")} cwd=${options?.cwd ?? ""}`);
@@ -1538,23 +1552,40 @@ describe("runInstallCommand", () => {
         };
       }
 
-      if (command === "git" && args[0] === "clone") {
-        const targetDir = args[args.length - 1];
-        if (targetDir) {
-          await mkdir(join(targetDir, ".git"), { recursive: true });
-          await mkdir(join(targetDir, "alpha-skill"), { recursive: true });
-          await writeFile(join(targetDir, "alpha-skill", "SKILL.md"), "# alpha\n");
+      if (command === "git" && args[0] === "clone" && args[1] === "--bare") {
+        const barePath = args[args.length - 1];
+        if (barePath) {
+          await mkdir(barePath, { recursive: true });
         }
-
         return { stdout: "", stderr: "", exitCode: 0 };
       }
 
-      if (command === "git" && args[0] === "rev-parse") {
-        return {
-          stdout: `${resolvedCommitSha}\n`,
-          stderr: "",
-          exitCode: 0,
-        };
+      if (command === "git" && (args[0] === "remote" || args[0] === "fetch")) {
+        return { stdout: "", stderr: "", exitCode: 0 };
+      }
+
+      if (command === "git" && args[0] === "--git-dir") {
+        if (args[2] === "rev-parse") {
+          return { stdout: `${resolvedCommitSha}\n`, stderr: "", exitCode: 0 };
+        }
+        if (args[2] === "archive") {
+          const outputIndex = args.indexOf("--output");
+          const tarPath = outputIndex >= 0 ? args[outputIndex + 1] : undefined;
+          if (tarPath) {
+            await writeFile(tarPath, "FAKE_TAR");
+          }
+          return { stdout: "", stderr: "", exitCode: 0 };
+        }
+      }
+
+      if (command === "tar") {
+        const cIndex = args.indexOf("-C");
+        const dest = cIndex >= 0 ? args[cIndex + 1] : undefined;
+        if (dest) {
+          await mkdir(join(dest, "alpha-skill"), { recursive: true });
+          await writeFile(join(dest, "alpha-skill", "SKILL.md"), "# alpha\n");
+        }
+        return { stdout: "", stderr: "", exitCode: 0 };
       }
 
       throw new Error(`Unexpected command: ${command} ${args.join(" ")} cwd=${options?.cwd ?? ""}`);
@@ -1634,22 +1665,40 @@ describe("runInstallCommand", () => {
         };
       }
 
-      if (command === "git" && args[0] === "clone") {
-        const targetDir = args[args.length - 1];
-        if (targetDir) {
-          await mkdir(join(targetDir, ".git"), { recursive: true });
-          await writeFile(join(targetDir, "SKILL.md"), "# Root Skill\n");
+      if (command === "git" && args[0] === "clone" && args[1] === "--bare") {
+        const barePath = args[args.length - 1];
+        if (barePath) {
+          await mkdir(barePath, { recursive: true });
         }
-
         return { stdout: "", stderr: "", exitCode: 0 };
       }
 
-      if (command === "git" && args[0] === "rev-parse") {
-        return {
-          stdout: `${resolvedCommitSha}\n`,
-          stderr: "",
-          exitCode: 0,
-        };
+      if (command === "git" && (args[0] === "remote" || args[0] === "fetch")) {
+        return { stdout: "", stderr: "", exitCode: 0 };
+      }
+
+      if (command === "git" && args[0] === "--git-dir") {
+        if (args[2] === "rev-parse") {
+          return { stdout: `${resolvedCommitSha}\n`, stderr: "", exitCode: 0 };
+        }
+        if (args[2] === "archive") {
+          const outputIndex = args.indexOf("--output");
+          const tarPath = outputIndex >= 0 ? args[outputIndex + 1] : undefined;
+          if (tarPath) {
+            await writeFile(tarPath, "FAKE_TAR");
+          }
+          return { stdout: "", stderr: "", exitCode: 0 };
+        }
+      }
+
+      if (command === "tar") {
+        const cIndex = args.indexOf("-C");
+        const dest = cIndex >= 0 ? args[cIndex + 1] : undefined;
+        if (dest) {
+          await mkdir(dest, { recursive: true });
+          await writeFile(join(dest, "SKILL.md"), "# Root Skill\n");
+        }
+        return { stdout: "", stderr: "", exitCode: 0 };
       }
 
       throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);

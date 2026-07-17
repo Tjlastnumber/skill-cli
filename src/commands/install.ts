@@ -440,12 +440,13 @@ export async function runInstallCommand(
   const tempRoot = await mkdtemp(join(tmpdir(), "skill-cli-install-"));
 
   try {
+    const storeRootDir = resolveStoreRootDir(config.storeDir, cwd, homeDir);
     const fetched = await fetchSource(sourceDescriptor, {
       tempDir: tempRoot,
+      storeRootDir,
       runCommand: runtime.runCommand,
     });
 
-    const storeRootDir = resolveStoreRootDir(config.storeDir, cwd, homeDir);
     const sourceResultKey = createSourceResultKey({
       sourceKind: bundleIdentity.sourceKind,
       sourceCanonical: bundleIdentity.sourceCanonical,
@@ -629,6 +630,8 @@ export async function runInstallCommand(
             sourceDisplayName: bundleIdentity.bundleName,
             sourceManifestPath,
             sourceCacheKey: fetched.cacheKey,
+            ...(fetched.commitSha ? { sourceCommitSha: fetched.commitSha } : {}),
+            ...(fetched.repoKey ? { sourceRepoKey: fetched.repoKey } : {}),
           });
 
           const linkPath = resolveLinkPath(targetRoot, skill.skillName);

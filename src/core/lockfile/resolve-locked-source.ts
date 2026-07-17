@@ -111,7 +111,9 @@ async function resolveNpmSource(bundle: LockedSourceBundle): Promise<string> {
 async function resolveGitSource(bundle: LockedSourceBundle): Promise<string> {
   const manifestState = await readBundleManifest(bundle);
   if (manifestState) {
-    return `${manifestState.manifest.sourceRaw.split("#")[0] || manifestState.manifest.sourceRaw}#${manifestState.manifest.sourceRevision}`;
+    const baseSource = manifestState.manifest.sourceRaw.split("#")[0] || manifestState.manifest.sourceRaw;
+    const sha = manifestState.metadata.sourceCommitSha ?? manifestState.manifest.sourceRevision;
+    return `${baseSource}#${sha}`;
   }
 
   const { stdout } = await execFileAsync("git", ["rev-parse", "HEAD"], {

@@ -4,7 +4,12 @@ import { join, resolve } from "node:path";
 
 import { SourceError } from "../errors.js";
 import { createGitStoreKey, createSourceCacheKey, createSourceSnapshotKey } from "./cache-key.js";
-import { isCommitSha } from "./git-ref.js";
+import {
+  exportCommit,
+  prepareBareRepo,
+  repoKeyFromCanonical,
+  resolveCommitSha,
+} from "./git-bare-repo.js";
 import { resolveGitSourceRef } from "./resolve-git-ref.js";
 import type { SourceDescriptor } from "./types.js";
 
@@ -26,12 +31,16 @@ export type CommandRunner = (
 
 export interface FetchSourceOptions {
   tempDir: string;
+  storeRootDir?: string;
   runCommand?: CommandRunner;
 }
 
 export interface FetchSourceResult {
   sourceDir: string;
   cacheKey: string;
+  commitSha?: string;
+  repoCanonical?: string;
+  repoKey?: string;
 }
 
 function toSlug(text: string): string {
@@ -169,43 +178,49 @@ export async function fetchSource(
   }
 
   if (descriptor.kind === "git") {
-    const sourceDir = join(options.tempDir, `git-${toSlug(requestCacheKey.slice(0, 16))}`);
-    const resolvedGitSource = await resolveGitSourceRef(descriptor, runCommand);
-
-    if (isCommitSha(descriptor.ref)) {
-      await runCommand("git", ["clone", descriptor.url, sourceDir]);
-      await runCommand("git", ["checkout", descriptor.ref], { cwd: sourceDir });
-      const actualHead = (await runCommand("git", ["rev-parse", "HEAD"], { cwd: sourceDir })).stdout.trim();
-
-      return {
-        sourceDir,
-        cacheKey: createGitStoreKey({
-          repoCanonical: resolvedGitSource.repoCanonical,
-          commitSha: actualHead,
-        }),
-      };
-    }
-
-    const args = resolvedGitSource.cloneBranchName
-      ? ["clone", "--depth", "1", "--branch", resolvedGitSource.cloneBranchName, descriptor.url, sourceDir]
-      : ["clone", "--depth", "1", descriptor.url, sourceDir];
-
-    await runCommand("git", args);
-
-    const actualHead = (await runCommand("git", ["rev-parse", "HEAD"], { cwd: sourceDir })).stdout.trim();
-
-    if (actualHead !== resolvedGitSource.resolvedCommitSha) {
+    if (!options.storeRootDir) {
       throw new SourceError(
-        `Resolved git ref '${descriptor.ref}' to ${resolvedGitSource.resolvedCommitSha}, but cloned HEAD was ${actualHead}`,
+        "Git sources require a storeRootDir to host the shared bare repository",
       );
     }
 
+    const resolvedGitSource = await resolveGitSourceRef(descriptor, runCommand);
+    const repoKey = repoKeyFromCanonical(resolvedGitSource.repoCanonical);
+    const { barePath } = await prepareBareRepo({
+      storeRootDir: options.storeRootDir,
+      repoKey,
+      url: descriptor.url,
+      runCommand,
+    });
+
+    const commitSha = await resolveCommitSha({
+      barePath,
+      ref: resolvedGitSource.resolvedCommitSha,
+      runCommand,
+    });
+
+    const exportDir = join(
+      options.tempDir,
+      `git-${toSlug(repoKey.slice(0, 16))}-${toSlug(commitSha.slice(0, 8))}`,
+    );
+
+    await exportCommit({
+      barePath,
+      commitSha,
+      destDir: exportDir,
+      tempDir: options.tempDir,
+      runCommand,
+    });
+
     return {
-      sourceDir,
+      sourceDir: exportDir,
       cacheKey: createGitStoreKey({
         repoCanonical: resolvedGitSource.repoCanonical,
-        commitSha: resolvedGitSource.resolvedCommitSha,
+        commitSha,
       }),
+      commitSha,
+      repoCanonical: resolvedGitSource.repoCanonical,
+      repoKey,
     };
   }
 

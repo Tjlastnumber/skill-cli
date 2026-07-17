@@ -1,11 +1,13 @@
 import { cp, mkdir, rm, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 import { FilesystemError, SourceError } from "../errors.js";
 
 export interface PersistSkillResult {
   storedSkillDir: string;
 }
+
+const DEFAULT_SKIP_NAMES = [".git"];
 
 async function pathExists(pathValue: string): Promise<boolean> {
   try {
@@ -23,8 +25,12 @@ export async function persistSkillInStore(options: {
   sourceSkillDir: string;
   storeRootDir: string;
   storeEntryKey: string;
+  skipNames?: string[];
 }): Promise<PersistSkillResult> {
   const { sourceSkillDir, storeRootDir, storeEntryKey } = options;
+  const skipNames = options.skipNames ?? DEFAULT_SKIP_NAMES;
+
+  const filter = (source: string): boolean => !skipNames.includes(basename(source));
 
   const sourceStats = await stat(sourceSkillDir).catch(() => {
     throw new SourceError(`Fetched skill directory does not exist: ${sourceSkillDir}`);
@@ -59,6 +65,7 @@ export async function persistSkillInStore(options: {
       recursive: true,
       errorOnExist: true,
       force: false,
+      filter,
     }).catch((error) => {
       throw new FilesystemError(
         `Failed to persist skill in store: ${storedSkillDir}`,
@@ -72,6 +79,7 @@ export async function persistSkillInStore(options: {
       recursive: true,
       errorOnExist: true,
       force: false,
+      filter,
     }).catch((error) => {
       throw new FilesystemError(
         `Failed to repair persisted skill in store: ${storedSkillDir}`,
