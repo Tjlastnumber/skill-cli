@@ -42,6 +42,16 @@ function recordingRunner(record?: Array<{ command: string; args: string[]; cwd?:
   };
 }
 
+function missingCommitRunner(record: Array<{ command: string; args: string[]; cwd?: string }>): CommandRunner {
+  return async (command, args, options): Promise<CommandRunnerResult> => {
+    record.push({ command, args, cwd: options?.cwd });
+    if (command === "git" && args[0] === "--git-dir" && args[2] === "rev-parse") {
+      throw new Error("Commit is not present");
+    }
+    return { stdout: "", stderr: "", exitCode: 0 };
+  };
+}
+
 describe("repoKeyFromCanonical", () => {
   it("produces a deterministic sha256 hex digest of the canonical", () => {
     const canonical = "github.com/acme/skills";
@@ -137,6 +147,35 @@ describe("fetchIntoBare", () => {
       {
         command: "git",
         args: ["fetch", "--all", "--tags"],
+        cwd: barePath,
+      },
+    ]);
+  });
+
+  it("fetches an explicitly requested commit from origin", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-bare-fetch-commit-"));
+    cleanupDirs.push(base);
+    const barePath = join(base, "repo.git");
+    const commitSha = "0123456789abcdef0123456789abcdef01234567";
+    await mkdir(barePath, { recursive: true });
+
+    const calls: Array<{ command: string; args: string[]; cwd?: string }> = [];
+    await fetchIntoBare({ barePath, commitSha, runCommand: missingCommitRunner(calls) });
+
+    expect(calls).toEqual([
+      {
+        command: "git",
+        args: ["fetch", "--all", "--tags"],
+        cwd: barePath,
+      },
+      {
+        command: "git",
+        args: ["--git-dir", barePath, "rev-parse", "--verify", `${commitSha}^{commit}`],
+        cwd: undefined,
+      },
+      {
+        command: "git",
+        args: ["fetch", "origin", commitSha],
         cwd: barePath,
       },
     ]);
@@ -268,6 +307,32 @@ describe("prepareBareRepo", () => {
     });
 
     expect(calls.map((entry) => entry.args[0])).toEqual(["remote", "fetch"]);
+    expect(await pathExists(`${barePath}.lock`)).toBe(false);
+  });
+
+  it("fetches a requested commit while holding the bare repo lock", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-prepare-commit-"));
+    cleanupDirs.push(base);
+    const storeRootDir = join(base, "store");
+    const repoKey = repoKeyFromCanonical("github.com/acme/skills");
+    const url = "https://github.com/acme/skills.git";
+    const commitSha = "0123456789abcdef0123456789abcdef01234567";
+    const calls: Array<{ command: string; args: string[]; cwd?: string }> = [];
+
+    await prepareBareRepo({
+      storeRootDir,
+      repoKey,
+      url,
+      commitSha,
+      runCommand: missingCommitRunner(calls),
+    });
+
+    const barePath = bareRepoPath(storeRootDir, repoKey);
+    expect(calls).toContainEqual({
+      command: "git",
+      args: ["fetch", "origin", commitSha],
+      cwd: barePath,
+    });
     expect(await pathExists(`${barePath}.lock`)).toBe(false);
   });
 

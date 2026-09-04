@@ -98,10 +98,34 @@ export async function ensureBareRepo(options: {
 
 export async function fetchIntoBare(options: {
   barePath: string;
+  commitSha?: string;
   runCommand: CommandRunner;
 }): Promise<void> {
-  const { barePath, runCommand } = options;
+  const { barePath, commitSha, runCommand } = options;
   await runCommand("git", ["fetch", "--all", "--tags"], { cwd: barePath });
+
+  if (commitSha && !(await bareRepoHasCommit({ barePath, commitSha, runCommand }))) {
+    await runCommand("git", ["fetch", "origin", commitSha], { cwd: barePath });
+  }
+}
+
+async function bareRepoHasCommit(options: {
+  barePath: string;
+  commitSha: string;
+  runCommand: CommandRunner;
+}): Promise<boolean> {
+  try {
+    await options.runCommand("git", [
+      "--git-dir",
+      options.barePath,
+      "rev-parse",
+      "--verify",
+      `${options.commitSha}^{commit}`,
+    ]);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function resolveCommitSha(options: {
@@ -118,16 +142,17 @@ export async function prepareBareRepo(options: {
   storeRootDir: string;
   repoKey: string;
   url: string;
+  commitSha?: string;
   runCommand: CommandRunner;
 }): Promise<{ barePath: string }> {
-  const { storeRootDir, repoKey, url, runCommand } = options;
+  const { storeRootDir, repoKey, url, commitSha, runCommand } = options;
   const barePath = bareRepoPath(storeRootDir, repoKey);
 
   await mkdir(join(storeRootDir, "repos"), { recursive: true });
 
   return withRepoLock(barePath, async () => {
     await ensureBareRepo({ storeRootDir, repoKey, url, runCommand });
-    await fetchIntoBare({ barePath, runCommand });
+    await fetchIntoBare({ barePath, commitSha, runCommand });
     return { barePath };
   });
 }

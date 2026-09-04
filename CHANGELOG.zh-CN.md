@@ -7,6 +7,12 @@
 
 ## [未发布]
 
+## [0.7.2] - 2026-09-04
+
+### 修复
+
+- 修复全新 store 从 lockfile 安装 Git source 时，shared bare repository 缺少锁定 commit 而导致安装失败的问题。
+
 ## [0.7.1] - 2026-05-14
 
 ### 修复

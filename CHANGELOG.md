@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-09-04
+
+### Fixed
+
+- Restore lockfile installs of Git sources in a fresh store by fetching a pinned commit when it is not already available in the shared bare repository.
+
 ## [0.7.1] - 2026-05-14
 
 ### Fixed

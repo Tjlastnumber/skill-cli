@@ -451,9 +451,92 @@ describe("fetchSource", () => {
         .digest("hex"),
     );
     expect(result.commitSha).toBe(fullSha);
-    expect(summarize(calls)).toEqual(["clone", "fetch", "rev-parse", "archive", "tar"]);
+    expect(summarize(calls)).toEqual(["clone", "fetch", "rev-parse", "rev-parse", "archive", "tar"]);
     const archiveCall = calls.find((call) => summarize([call])[0] === "archive");
     expect(archiveCall?.args).toContain(fullSha);
+  });
+
+  it("fetches a locked commit before resolving it from a fresh bare repository", async () => {
+    const base = await mkdtemp(join(tmpdir(), "skill-cli-fetch-git-locked-cold-cache-"));
+    cleanupDirs.push(base);
+
+    const repoCanonical = "github.com/acme/skills";
+    const fullSha = "0123456789abcdef0123456789abcdef01234567";
+    const storeRootDir = join(base, "store");
+    const calls: RecordedCall[] = [];
+    let commitFetched = false;
+
+    const runner: CommandRunner = async (command, args, options): Promise<CommandRunnerResult> => {
+      calls.push({ command, args, cwd: options?.cwd });
+
+      if (command === "git" && args[0] === "clone" && args[1] === "--bare") {
+        return { stdout: "", stderr: "", exitCode: 0 };
+      }
+      if (command === "git" && args[0] === "fetch") {
+        if (args[1] === "origin" && args[2] === fullSha) {
+          commitFetched = true;
+        }
+        return { stdout: "", stderr: "", exitCode: 0 };
+      }
+      if (
+        command === "git" &&
+        args[0] === "--git-dir" &&
+        args[2] === "rev-parse" &&
+        args[3] === "--verify"
+      ) {
+        if (!commitFetched) {
+          throw new SourceError(`Locked commit is unavailable locally: ${fullSha}`);
+        }
+        return { stdout: `${fullSha}\n`, stderr: "", exitCode: 0 };
+      }
+      if (command === "git" && args[0] === "--git-dir" && args[2] === "rev-parse") {
+        if (!commitFetched) {
+          throw new SourceError(`Locked commit is unavailable locally: ${fullSha}`);
+        }
+        return { stdout: `${fullSha}\n`, stderr: "", exitCode: 0 };
+      }
+      if (command === "git" && args[0] === "--git-dir" && args[2] === "archive") {
+        const outputIndex = args.indexOf("--output");
+        const tarPath = outputIndex >= 0 ? args[outputIndex + 1] : undefined;
+        if (tarPath) {
+          await writeFile(tarPath, "FAKE_TAR");
+        }
+        return { stdout: "", stderr: "", exitCode: 0 };
+      }
+      if (command === "tar") {
+        const cIndex = args.indexOf("-C");
+        const target = cIndex >= 0 ? args[cIndex + 1] : undefined;
+        if (target) {
+          await mkdir(target, { recursive: true });
+          await writeFile(join(target, "SKILL.md"), "# git skill\n");
+        }
+        return { stdout: "", stderr: "", exitCode: 0 };
+      }
+
+      throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
+    };
+
+    const result = await fetchSource(
+      {
+        kind: "git",
+        raw: `https://github.com/acme/skills.git#${fullSha}`,
+        url: "https://github.com/acme/skills.git",
+        ref: fullSha,
+      },
+      {
+        tempDir: join(base, "tmp"),
+        storeRootDir,
+        runCommand: runner,
+      },
+    );
+
+    expect(result.commitSha).toBe(fullSha);
+    expect(summarize(calls)).toEqual(["clone", "fetch", "rev-parse", "fetch", "rev-parse", "archive", "tar"]);
+    expect(calls[3]).toEqual({
+      command: "git",
+      args: ["fetch", "origin", fullSha],
+      cwd: bareRepoPathFor(storeRootDir, repoCanonical),
+    });
   });
 
   it("packs and extracts npm source via npm pack and tar", async () => {

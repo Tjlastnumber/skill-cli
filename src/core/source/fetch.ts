@@ -10,6 +10,7 @@ import {
   repoKeyFromCanonical,
   resolveCommitSha,
 } from "./git-bare-repo.js";
+import { isCommitSha } from "./git-ref.js";
 import { resolveGitSourceRef } from "./resolve-git-ref.js";
 import type { SourceDescriptor } from "./types.js";
 
@@ -190,6 +191,10 @@ export async function fetchSource(
       storeRootDir: options.storeRootDir,
       repoKey,
       url: descriptor.url,
+      commitSha:
+        descriptor.ref && descriptor.ref.length === 40 && isCommitSha(descriptor.ref)
+          ? resolvedGitSource.resolvedCommitSha
+          : undefined,
       runCommand,
     });
 
